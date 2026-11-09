@@ -836,7 +836,16 @@ def _url_payload_command(n: int) -> str:
 #: and refusing a final name whose DNS lookup fails for any reason but "no such name",
 #: or a config where a case or trailing-dot spelling of the name could route elsewhere.
 #: Re-measured.
-_PACKAGE_LINE_BUDGET = 36_794
+#: Raised by 1138, from 36,794, to 37,932, for the self-kill floor's ``git grep``
+#: pager read, in its own owner module ``argv_floor_pager``: the last ``-O`` and its ``--no-``
+#: form, the last ``core.pager`` / ``pager.grep`` from ``-c``, ``--config-env`` and
+#: ``GIT_CONFIG_*`` words, ``GIT_PAGER`` / ``PAGER`` unless ``-P``, an inline alias
+#: chain, ``find -exec``, here-documents fed to a shell, and the floor's own pass
+#: over array assignments under an expansion budget, with candidate caps that
+#: count only values that could carry a pager; the walk's opt-in shell-name
+#: fold for that read; the walk's shared tokenization; and the
+#: facade's type-checker imports of its names. Re-measured.
+_PACKAGE_LINE_BUDGET = 37_932
 
 #: Ceiling on any ONE file in the package. This is what the bound is really for --
 #: a package total says nothing about a single file growing back into a second

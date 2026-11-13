@@ -836,7 +836,13 @@ def _url_payload_command(n: int) -> str:
 #: and refusing a final name whose DNS lookup fails for any reason but "no such name",
 #: or a config where a case or trailing-dot spelling of the name could route elsewhere.
 #: Re-measured.
-_PACKAGE_LINE_BUDGET = 36_794
+#: Raised by 100, from 36,794, to 36,894, for the joined query value checks in
+#: ``exfil_git_object``: a URL's parameter values are also judged joined, so a secret
+#: cut into several short values is seen as one run. Deny-only: the credential join
+#: is unconditional with the AWS key id matched case-sensitively, the base64 join
+#: sits on the waivable tier and counts only form-decoded, non-hex pieces of at
+#: least 16 chars, trailing padding kept. Re-measured.
+_PACKAGE_LINE_BUDGET = 36_894
 
 #: Ceiling on any ONE file in the package. This is what the bound is really for --
 #: a package total says nothing about a single file growing back into a second

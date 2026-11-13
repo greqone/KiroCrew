@@ -450,6 +450,65 @@ function exfilBlobHit(value: string): boolean {
   return false
 }
 
+// Query values judged JOINED, in order, separators removed, so a secret cut into
+// several short params (each under the 40-char run, the query under the length
+// signal) is still seen. Mirrors the backend's `exfil_git_object` join helpers.
+// The credential signal joins every value, with any inner `=` both kept and
+// removed; the AWS key id is matched case-sensitively there, since a real id is
+// uppercase and joined words (`topic=asia&section=...`) are not. The blob signal
+// form-decodes each value (`+` is a space, so search
+// words never join), cuts it at `=` (so `a=x=y` joins like `a=x&b=y`) and joins
+// only pieces wholly in the base64 class, not wholly hex, and at least
+// EXFIL_JOINED_B64_MIN_PIECE chars: short ids and words (a video id, `index=2`)
+// and hex ids (two dashless UUIDs) are what ordinary links carry, and a piece
+// with any other byte cannot sit in one run on its own. Such a
+// piece is skipped, not a break, so filler params between chunks do not split a
+// secret. A bare git object name is hex, so it is skipped too. Trailing `=`
+// padding is kept after the last joined piece when that piece ended its value.
+// Parameter names are not joined.
+// shortcut: a secret cut into pieces under 16 chars, or a hex secret cut into
+// pieces, is bounded only by the length signal.
+const EXFIL_B64_PIECE_RE = /^[A-Za-z0-9+/]*$/
+const EXFIL_HEX_PIECE_RE = /^[0-9A-Fa-f]+$/
+const EXFIL_JOINED_B64_MIN_PIECE = 16
+const EXFIL_AWS_KEY_ID_RE = /(?:AKIA|ASIA)[A-Z0-9]{16}/
+const EXFIL_CREDENTIAL_NON_AWS_RE = new RegExp(
+  EXFIL_CREDENTIAL_RE.source.replace('(?:AKIA|ASIA)[A-Z0-9]{16}|', ''),
+  'i',
+)
+function queryValues(query: string): string[] {
+  return query.split('&').map((segment) => {
+    const eq = segment.indexOf('=')
+    return eq === -1 ? '' : segment.slice(eq + 1)
+  })
+}
+function joinedCredentialHit(query: string): boolean {
+  const joined = queryValues(query).join('')
+  return [joined, joined.split('=').join('')].some(
+    (form) => EXFIL_AWS_KEY_ID_RE.test(form) || EXFIL_CREDENTIAL_NON_AWS_RE.test(form),
+  )
+}
+function formDecode(v: string): string {
+  const spaced = v.replace(/\+/g, ' ')
+  try { return decodeURIComponent(spaced) } catch { return spaced }
+}
+function joinedBlobHit(query: string): boolean {
+  let joined = ''
+  let padding = ''
+  for (const value of queryValues(query)) {
+    const decoded = formDecode(value)
+    const body = decoded.replace(/=+$/, '')
+    const pieces = body.split('=')
+    pieces.forEach((p, i) => {
+      if (p.length >= EXFIL_JOINED_B64_MIN_PIECE && EXFIL_B64_PIECE_RE.test(p) && !EXFIL_HEX_PIECE_RE.test(p)) {
+        joined += p
+        padding = i === pieces.length - 1 ? decoded.slice(body.length, body.length + 2) : ''
+      }
+    })
+  }
+  return exfilBlobHit(joined + padding)
+}
+
 // Aggregate query LENGTH is the one signal that names no shape at all: it fires on
 // any richly-parameterised URL, which is why prefilled issue links —
 // `…/issues/new?title=…&body=<a paragraph of prose>&labels=…` — render as a
@@ -502,7 +561,9 @@ export function sanitizeExfiltrationUrls(text: string): string {
     const redact = hit ||
       EXFIL_PERCENT_RE.test(query) ||
       EXFIL_CREDENTIAL_RE.test(query) ||
+      joinedCredentialHit(query) ||
       exfilBlobHit(query) ||
+      joinedBlobHit(query) ||
       query.length >= EXFIL_QUERY_MIN_LEN
     if (redact) {
       out += text.slice(last, m.index) + i18nT('utils.sanitize.redacted_suspicious_url', { domain })

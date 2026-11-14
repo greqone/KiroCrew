@@ -255,7 +255,7 @@ _NULLABLE: Final[dict[str, dict[str, Any]]] = {
 #: let a typo through. Saying which it is leaves the choice with the validator.
 #:
 #: ``test_every_opaque_declaration_is_a_real_path`` pins each path, and
-#: ``test_no_empty_properties_passes_as_a_known_shape`` fails on an object the probe
+#: ``test_no_object_passes_as_having_no_keys`` fails on an object the probe
 #: rendered empty that is declared neither here nor in :data:`_NULLABLE`, so a map added
 #: to a fold cannot land as "has no keys".
 _OPAQUE: Final[dict[str, str]] = {

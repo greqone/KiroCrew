@@ -308,7 +308,7 @@ def _run(
         scrubbed_env.update(env)
     # Belt and braces: strip credential-shaped names AFTER layering, so neither the
     # caller's dict nor a gap in the shared scrub list can hand a token to agent-authored
-    # test code. See `_CREDENTIAL_ENV_MARKERS`.
+    # test code. See `push_policy.CREDENTIAL_ENV_MARKERS`.
     scrubbed_env = strip_credential_env(scrubbed_env)
     try:
         # Kernel RLIMIT ceiling (NPROC/NOFILE/CPU/AS) on top of the sandbox: a

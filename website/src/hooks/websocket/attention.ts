@@ -6,7 +6,8 @@
  *  that drive them. */
 import { store } from '../../store'
 import { isChatPath } from '../notificationBanner'
-import { bindSlotReadSender, emitSlotRead, flushSlotRead } from '../../lib/slotReadRelay'
+import { bindSlotReadSender, emitSlotRead, flushSlotRead, noteShownHere } from '../../lib/slotReadRelay'
+import { queueRead } from '../../lib/readOutbox'
 import { bindComposeIntentSender } from '../../lib/composeIntent'
 import { getViewedThreadSlot } from '../../lib/viewedThread'
 import { getMountedMemberThreadSlot, subscribeMountedMemberThread } from '../../lib/mountedMemberThread'
@@ -123,13 +124,17 @@ export function attendArrival(
   reconnecting: boolean,
   onOffScreen: (slot: string) => void,
 ): void {
-  if (slot && !isSlotOnScreen(slot) && !reconnecting) {
-    onOffScreen(slot)
-  }
-  else if (slot && !reconnecting && !document.hidden && document.hasFocus() && isSlotRenderedVisibly(slot)) {
-    const readTs = ts || slotLastTsOf(store.getState().dashboard, slot)
-    emitSlotRead(slot, readTs)
-  }
+  if (!slot || reconnecting) return
+  if (!isSlotOnScreen(slot)) onOffScreen(slot)
+  else recordShown(slot, ts || slotLastTsOf(store.getState().dashboard, slot))
+}
+
+/** A row of *slot* the user is looking at, at server time *ts*: relayed as a
+ *  read while the window is visible and focused and renders the slot, else
+ *  kept as shown here so leaving the slot does not badge it. */
+export function recordShown(slot: string, ts: string | undefined): void {
+  if (!document.hidden && document.hasFocus() && isSlotRenderedVisibly(slot)) emitSlotRead(slot, ts)
+  else if (isSlotOnScreen(slot)) noteShownHere(slot, ts)
 }
 
 /* Slot-focus intent signal (resume prefetch). The hook instance owns the
@@ -225,9 +230,10 @@ export function attachFocusRelay({ socket, flushSlotActivity, onActiveSlotChange
     composeSentAt.set(slot, now)
     sendFocus(slot)
   })
-  // Read-relay sender rides the same socket with the same best-effort
-  // contract; slotReadRelay owns the per-slot throttle and the watermark.
+  // `sendIfOpen` drops a read while the socket is down, so each read is also
+  // kept in the read outbox until the gateway confirms it.
   bindSlotReadSender((slot: string, readTs?: string) => {
+    queueRead(slot, readTs)
     socket.sendIfOpen(readTs ? { type: 'slot_read', slot, read_ts: readTs } : { type: 'slot_read', slot })
   })
   // Tracks the store's view (crewmate thread or activeSlot), not pane focus:
@@ -275,7 +281,7 @@ export function attachFocusRelay({ socket, flushSlotActivity, onActiveSlotChange
       flushSlotActivity()
       const active = store.getState().chat.activeSlot
       if (active && !socket.reconnectingRef.current && document.hasFocus() && isChatSurfaceVisible()) {
-        emitSlotRead(active, slotLastTsOf(store.getState().dashboard, active))
+        recordShown(active, slotLastTsOf(store.getState().dashboard, active))
       }
     }
   }

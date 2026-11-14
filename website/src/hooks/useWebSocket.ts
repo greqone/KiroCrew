@@ -71,12 +71,13 @@ import {
 import { DASHBOARD_FIELDS_FRAME, handleDashboardFields } from './websocket/dashboardFields'
 import { useChatStream } from './websocket/chatStream'
 import { useTurnCompletion } from './websocket/turnCompletion'
-import { attachFocusRelay, focusedSlotForCurrentSurface } from './websocket/attention'
+import { attachFocusRelay, focusedSlotForCurrentSurface, recordShown } from './websocket/attention'
 import { emitAppReload, emitChannelEvent, emitComputerUseFrame, emitCronHistory, emitResumeAllDone } from './websocket/browserEvents'
 import { createReconnectSnapshotWait, runFirstConnect, runReconnectCatchUp, type ReconnectSnapshotWait } from './websocket/reconnectCatchUp'
 import { browserLiveStore } from './useBrowserLive'
 import { applySharedCrewFrame, onSharedCrewSocketOpen, setSharedCrewSender } from './sharedCrew/sharedCrewSocket'
 import { batchedUnlessOpen } from '../lib/streamBatch'
+import { ackRead } from '../lib/readOutbox'
 import { noteCrewSteerReceipt } from '../lib/crewSteerNotice'
 
 /* The dashboard's single multiplexed WebSocket. `useWebSocket` composes the
@@ -256,6 +257,7 @@ export function useWebSocket() {
         syncPendingQuestions: cards.syncPendingQuestions,
         syncWorkflowRuns,
         focusedSlot: focusedSlotForCurrentSurface,
+        recordShown,
         reconnectSnapshot,
       }
       if (socket.wasConnectedRef.current) {
@@ -690,7 +692,10 @@ export function useWebSocket() {
             // (never the emitter) so a relayed read can't echo back out.
             const r = data as { slot?: string; read_ts?: string }
             if (typeof r.slot === 'string' && r.slot) {
-              dispatch(remoteSlotRead({ slot: r.slot, readTs: typeof r.read_ts === 'string' && r.read_ts ? r.read_ts : undefined }))
+              const readTs = typeof r.read_ts === 'string' && r.read_ts ? r.read_ts : undefined
+              // The gateway echoes the read it stored, so this also confirms a kept read.
+              ackRead(r.slot, readTs)
+              dispatch(remoteSlotRead({ slot: r.slot, readTs }))
             }
             break
           }

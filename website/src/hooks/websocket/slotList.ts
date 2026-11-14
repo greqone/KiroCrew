@@ -14,6 +14,9 @@ import { CHAT_FOLDERS_WRITE_KEY } from '../../api/chatFoldersWrite'
 import { autoBatched } from '../../lib/streamBatch'
 import { noteAppSlotRows } from '../../utils/appSlotPush'
 import { createSlotStorageSweep } from '../../utils/slotStorageSweep'
+import { applyServerReads } from './serverReads'
+import { resendKeptReads } from '../../lib/readOutbox'
+import { resendSlotRead } from '../../lib/slotReadRelay'
 
 export interface SlotListSync {
   /** A new connection: forget the last-seen generations and raw frame. */
@@ -108,6 +111,8 @@ export function useSlotListSync(
       resyncPendingRef.current = false
       // A `_done` the old socket never delivered will not arrive on this one.
       clearIdleRowRefreshes()
+      // A read the old socket lost, or one made while it was down, reaches the gateway once.
+      resendKeptReads(resendSlotRead)
     }
     const onSlots = (msg: FrameData, data: ChatSlot[], raw: string): void => {
       // A numbered list is the base the next `slots_diff` is built on. Reducers
@@ -188,6 +193,7 @@ export function useSlotListSync(
       const snapshotSeenBefore = beforeSettle.slotsSnapshotSeen === true
       dispatch(sseSlots(data))
       lastSlotsArrayRef.current = store.getState().dashboard.slots
+      applyServerReads(lastSlotsArrayRef.current, { dispatch, queryClient })
       // localStorage is a side effect, so the orphan sweep runs here, after the
       // reducers have applied this frame's hold fields and rows.
       if (Array.isArray(data)) {

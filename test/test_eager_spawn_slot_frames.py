@@ -362,12 +362,10 @@ class TestSlotFocusedFrame:
 
 
 class TestSlotReadFrame:
-    """ws._handle_slot_read: the cross-window unread-badge read relay.
+    """ws._handle_slot_read: store the read time, relay it to every owner window.
 
-    A window that read a slot tells the gateway; the gateway rebroadcasts to
-    every owner window so their bubbles retire too. Pure relay — no server
-    read-state — so the contract under test is small: owner-gated, validated
-    slot key, one owner-scoped broadcast.
+    Owner-gated, validated slot key, one owner-scoped broadcast that carries the
+    newest written read time, sent once the disk holds it.
     """
 
     def _state(self):
@@ -380,11 +378,110 @@ class TestSlotReadFrame:
         assert _handle_slot_read(state, "t1", owner=True) is True
         state.broadcast_ws_owners.assert_called_once_with("slot_read", {"slot": "t1"})
 
-    def test_read_watermark_is_relayed_opaquely(self):
+    def _loaded_state(self, tmp_path, monkeypatch):
+        from kiro_crew.dashboard import slot_read_state as srs
+
+        monkeypatch.setattr("kiro_crew.config.loader.config_dir", lambda: tmp_path)
+        monkeypatch.setattr(srs, "SAVE_DELAY_SECONDS", 0)
+        state = self._state()
+        reads = srs.read_state_of(state)
+        reads.adopt("2026-09-01T00:00:00Z", {})
+        return state, reads
+
+    @pytest.mark.asyncio
+    async def test_the_echo_waits_for_the_write(self, tmp_path, monkeypatch):
+        """The echo is the sender's acknowledgement, so it names only a read on disk."""
+        from kiro_crew.dashboard.slot_read_state import load_stored, store_path
+        from kiro_crew.dashboard.ws import _handle_slot_read
+        from kiro_crew.testing.wait import await_until
+
+        state, reads = self._loaded_state(tmp_path, monkeypatch)
+        assert _handle_slot_read(state, "t1", "2026-09-10T00:00:00Z", owner=True) is True
+        state.broadcast_ws_owners.assert_not_called()
+        assert reads.row_read_ts("t1") is None
+        await await_until(reads._save_task)
+        assert load_stored(store_path(tmp_path))[1] == {"t1": "2026-09-10T00:00:00Z"}
+        state.broadcast_ws_owners.assert_called_once_with(
+            "slot_read", {"slot": "t1", "read_ts": "2026-09-10T00:00:00Z"}
+        )
+        assert reads.row_read_ts("t1") == "2026-09-10T00:00:00Z"
+
+    @pytest.mark.asyncio
+    async def test_older_read_relays_the_newer_written_time(self, tmp_path, monkeypatch):
+        from kiro_crew.dashboard.ws import _handle_slot_read
+        from kiro_crew.testing.wait import await_until
+
+        state, reads = self._loaded_state(tmp_path, monkeypatch)
+        _handle_slot_read(state, "t1", "2026-09-10T00:00:05+00:00", owner=True)
+        await await_until(reads._save_task)
+        state.broadcast_ws_owners.reset_mock()
+        _handle_slot_read(state, "t1", "2026-09-10T00:00:01+00:00", owner=True)
+        state.broadcast_ws_owners.assert_called_once_with(
+            "slot_read", {"slot": "t1", "read_ts": "2026-09-10T00:00:05+00:00"}
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_failed_write_sends_no_echo_and_the_resend_retries_it(
+        self, tmp_path, monkeypatch
+    ):
+        from kiro_crew.dashboard import slot_read_state as srs
+        from kiro_crew.dashboard.ws import _handle_slot_read
+        from kiro_crew.testing.wait import await_until
+
+        state, reads = self._loaded_state(tmp_path, monkeypatch)
+        real_save = srs.save
+        monkeypatch.setattr(srs, "save", MagicMock(side_effect=OSError("disk full")))
+        _handle_slot_read(state, "t1", "2026-09-10T00:00:00Z", owner=True)
+        await await_until(reads._save_task)
+        state.broadcast_ws_owners.assert_not_called()
+        assert reads.row_read_ts("t1") is None
+
+        monkeypatch.setattr(srs, "save", real_save)
+        _handle_slot_read(state, "t1", "2026-09-10T00:00:00Z", owner=True)
+        await await_until(reads._save_task)
+        state.broadcast_ws_owners.assert_called_once_with(
+            "slot_read", {"slot": "t1", "read_ts": "2026-09-10T00:00:00Z"}
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_read_during_a_write_gets_its_own_write(self, tmp_path, monkeypatch):
+        import threading
+
+        from kiro_crew.dashboard import slot_read_state as srs
+        from kiro_crew.dashboard.ws import _handle_slot_read
+        from kiro_crew.testing.wait import async_wait_until, await_until
+
+        state, reads = self._loaded_state(tmp_path, monkeypatch)
+        entered, release = threading.Event(), threading.Event()
+        writes: list[dict[str, str]] = []
+
+        def held_save(path, epoch, saved):
+            writes.append(dict(saved))
+            if len(writes) == 1:
+                entered.set()
+                assert release.wait(30)
+
+        monkeypatch.setattr(srs, "save", held_save)
+        _handle_slot_read(state, "t1", "2026-09-10T00:00:00Z", owner=True)
+        await async_wait_until(entered.is_set)
+        _handle_slot_read(state, "t1", "2026-09-10T00:00:09Z", owner=True)
+        release.set()
+        await await_until(reads._save_task)
+        assert writes == [{"t1": "2026-09-10T00:00:00Z"}, {"t1": "2026-09-10T00:00:09Z"}]
+        state.broadcast_ws_owners.assert_called_once_with(
+            "slot_read", {"slot": "t1", "read_ts": "2026-09-10T00:00:09Z"}
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_read_before_the_load_echoes_after_it(self, tmp_path, monkeypatch):
+        from kiro_crew.dashboard import slot_read_state as srs
         from kiro_crew.dashboard.ws import _handle_slot_read
 
+        monkeypatch.setattr("kiro_crew.config.loader.config_dir", lambda: tmp_path)
         state = self._state()
-        assert _handle_slot_read(state, "t1", "2026-09-10T00:00:00Z", owner=True) is True
+        _handle_slot_read(state, "t1", "2026-09-10T00:00:00Z", owner=True)
+        state.broadcast_ws_owners.assert_not_called()
+        await srs.load_read_state_after_listen(state)
         state.broadcast_ws_owners.assert_called_once_with(
             "slot_read", {"slot": "t1", "read_ts": "2026-09-10T00:00:00Z"}
         )
@@ -394,7 +491,7 @@ class TestSlotReadFrame:
         their conservative default) rather than dropping the read gesture."""
         from kiro_crew.dashboard.ws import _handle_slot_read
 
-        for junk in (42, "", "x" * 65, {"ts": "y"}):
+        for junk in (42, "", "x" * 65, {"ts": "y"}, "not a time"):
             state = self._state()
             assert _handle_slot_read(state, "t1", junk, owner=True) is True
             state.broadcast_ws_owners.assert_called_once_with("slot_read", {"slot": "t1"})

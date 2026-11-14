@@ -1,6 +1,6 @@
 ---
 title: Small machines release the embedding model sooner, and nothing waits for it
-status: accepted
+status: implemented
 author: kirocrew agent session, directed by the repository owner
 created: 2026-11-13
 last-audited: 2026-11-13
@@ -14,11 +14,10 @@ superseded-by: []
 
 # RFC: Small machines release the embedding model sooner, and nothing waits for it
 
-Status: accepted. The repository owner asked for this change in the conductor chat on
-2026-11-13 and accepted this document on 2026-11-14; it takes effect when the status
-change merges. The implementation is
-[#37128](https://github.com/kirodotdev/KiroCrew/pull/37128), which rebases onto the
-base that carries this status. This document landed first because it changes a
+Status: implemented. The repository owner asked for this change in the conductor chat on
+2026-11-13 and accepted this document on 2026-11-14. It is implemented by
+[#37128](https://github.com/kirodotdev/KiroCrew/pull/37128); the macOS and Windows rows
+Limit 2 owes are recorded on that pull request before it merges. This document landed first because it changes a
 shipped default (`memory.embedding_idle_evict_secs`), and the First Principles lane
 reads that decision off the base branch. Every code reference was read at `911bde870d`.
 

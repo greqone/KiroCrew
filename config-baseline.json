@@ -6249,6 +6249,10 @@
           "enabled": true,
           "max_session_mb": 200,
           "max_total_mb": 1024
+        },
+        "sites": {
+          "allow": [],
+          "deny": []
         }
       }
     },
@@ -6474,6 +6478,79 @@
       "hasChildren": false,
       "enumValues": null,
       "defaultValue": 1024
+    },
+    {
+      "path": "browser.sites",
+      "kind": "core",
+      "type": "object",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "label": "Site lists",
+      "help": "The sites the agent's browser may open and the sites it never opens. Both empty adds no limit.",
+      "hasChildren": true,
+      "enumValues": null,
+      "defaultValue": {
+        "allow": [],
+        "deny": []
+      }
+    },
+    {
+      "path": "browser.sites.allow",
+      "kind": "core",
+      "type": "array",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "label": "Allowed sites",
+      "help": "When not empty, the agent's browser opens only these sites: `example.com` is that host, `*.example.com` is example.com and every name under it. Checked on every page the browser lands on, after redirects and in new tabs. Empty adds no limit.",
+      "hasChildren": true,
+      "enumValues": null,
+      "defaultValue": []
+    },
+    {
+      "path": "browser.sites.allow.*",
+      "kind": "core",
+      "type": "string",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "label": "*",
+      "help": "",
+      "hasChildren": false,
+      "enumValues": null,
+      "defaultValue": null
+    },
+    {
+      "path": "browser.sites.deny",
+      "kind": "core",
+      "type": "array",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "label": "Blocked sites",
+      "help": "Sites the agent's browser never opens, in the same form as the allowed sites. A blocked site stays blocked even when the allowed sites cover it.",
+      "hasChildren": true,
+      "enumValues": null,
+      "defaultValue": []
+    },
+    {
+      "path": "browser.sites.deny.*",
+      "kind": "core",
+      "type": "string",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "label": "*",
+      "help": "",
+      "hasChildren": false,
+      "enumValues": null,
+      "defaultValue": null
     },
     {
       "path": "decisions",

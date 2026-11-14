@@ -284,6 +284,7 @@ def build_context(
         staging_dir=config_dir() / IPC_LEAF / "shots",
         sleep=asyncio.sleep,
         url_allowed=committed_url_allowed,
+        site_rule=committed_site_rule,
         loop=_loop,
         mark=_mark,
         record=_record,
@@ -311,32 +312,49 @@ def frame_ops(hub: LiveHub, key: str, *, caller_key: str | None = None) -> Any:
     return FrameOps(relay, stream.session_id, registry, harness_ops.WALKER_SOURCE)
 
 
-def committed_url_allowed(url: str) -> bool:
-    """The navigate gate for the URL a navigation LANDED on, judged in the gateway.
+def _committed_gate_config() -> tuple[frozenset[str], url_gate.SiteLists]:
+    """The loopback allowlist and the site lists, from one fresh config read.
 
-    The same predicate the shim applies to the requested URL
-    (``browser_harness.url_gate``), with the operator's loopback allowlist read
-    fresh and the gateway's own port refused. Fail-CLOSED: a config read failure
-    admits only public targets, an unknown port admits no local one.
+    A read failure yields no local target, and site lists nobody can read
+    (:data:`url_gate.UNREAD_SITE_LISTS`), which refuse every page: the file that
+    failed may hold the operator's limit. A load that could not see the lists
+    (an unreadable file or ``browser`` section) answers the same way.
     """
     try:
         from kiro_crew.config import KiroCrewConfig
 
-        raw = getattr(KiroCrewConfig.load().dashboard, "browser_local_origins", [])
-        allowed = (
-            frozenset(e for e in raw if isinstance(e, str))
-            if isinstance(raw, list)
-            else frozenset()
-        )
+        cfg = KiroCrewConfig.load()
     except Exception:  # noqa: BLE001 - a config read failure must not widen the gate
-        allowed = frozenset()
+        return frozenset(), url_gate.UNREAD_SITE_LISTS
+    raw = getattr(cfg.dashboard, "browser_local_origins", [])
+    allowed = (
+        frozenset(e for e in raw if isinstance(e, str)) if isinstance(raw, list) else frozenset()
+    )
+    return allowed, url_gate.site_lists_of_config(cfg)
+
+
+def committed_url_allowed(url: str) -> bool:
+    """The navigate gate for the URL a navigation LANDED on, judged in the gateway.
+
+    The same predicate the shim applies to the requested URL
+    (``browser_harness.url_gate``), with the operator's loopback allowlist and
+    site lists read fresh and the gateway's own port refused. Fail-CLOSED: a
+    config read that cannot see the site lists admits no page, an unknown port
+    admits no local one.
+    """
+    allowed, sites = _committed_gate_config()
     try:
         from kiro_crew import mcp_core
 
         port: int | None = mcp_core._api_port()
     except Exception:  # noqa: BLE001 - unknowable port -> no local target is provably safe
         port = None
-    return url_gate.url_allowed(url, allowed, port)
+    return url_gate.url_allowed(url, allowed, port, sites)
+
+
+def committed_site_rule(url: str) -> str | None:
+    """The ``browser.sites`` rule that refuses *url*, for the refusal text; else None."""
+    return url_gate.site_rule(url, _committed_gate_config()[1])
 
 
 async def _supervisor(hub: LiveHub, key: str) -> Any:

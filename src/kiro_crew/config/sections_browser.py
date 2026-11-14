@@ -13,7 +13,9 @@ An owner of the :mod:`kiro_crew.config.sections` facade; it never imports the fa
 from __future__ import annotations
 
 import logging
+import re as _re
 from dataclasses import dataclass, field
+from urllib.parse import urlsplit as _urlsplit
 
 from kiro_crew.config.fields import _meta, _safe_bool, _safe_int
 from kiro_crew.config.sections_defaults import SectionReader
@@ -307,6 +309,146 @@ class BrowserCredentialsConfig:
         )
 
 
+#: Most entries kept in each of ``browser.sites.allow`` and ``browser.sites.deny``;
+#: the rest of a longer list is dropped with one warning.
+SITE_LIST_CAP = 256
+#: One ``browser.sites`` entry: a host name (labels of letters, digits, ``-`` and
+#: ``_``), optionally led by ``*.`` for "this name and every name under it", or an
+#: IP literal. No scheme, port, path or other wildcard.
+_SITE_ENTRY_RE = _re.compile(
+    r"(?:\*\.)?[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?"
+    r"(?:\.[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?)*"
+)
+
+
+def _site_entry(item: str) -> str | None:
+    """*item* as a canonical ``browser.sites`` entry, or None when it names no host.
+
+    Scheme, userinfo, port and path are dropped and a leading ``.`` means ``*.``.
+    A Unicode name goes through the apps' one host normalizer, which names no host
+    for characters the two IDNA versions read differently (never another site).
+    """
+    import ipaddress
+
+    from kiro_crew.apps.app_hosts import normalize_host
+
+    text = item.strip()
+    try:
+        return str(ipaddress.IPv6Address(text.strip("[]")))
+    except ValueError:
+        pass
+    try:
+        host = _urlsplit(text if "://" in text else "//" + text).hostname or ""
+    except ValueError:
+        return None
+    if ":" in host:
+        try:
+            return str(ipaddress.IPv6Address(host))
+        except ValueError:
+            return None
+    wild = host.startswith(("*.", "."))
+    name = normalize_host((host[2:] if host.startswith("*.") else host.lstrip(".")).rstrip("."))
+    if name is None or len(name) > 253 or not _SITE_ENTRY_RE.fullmatch(name):
+        return None
+    return "*." + name if wild else name
+
+
+def _sites_unread(what: str) -> None:
+    """Record that ``browser.sites`` held a value the loader cannot read as lists.
+
+    The lists then load empty, which reads as no limit, so the record is what the
+    navigate gate asks (``config.resolution.browser_site_lists_unknown``) before it
+    opens a page. Like every degraded section it lasts the process: the operator
+    fixes the file and restarts.
+    """
+    from kiro_crew.config.resolution import _OBSERVED_DEGRADED_SECTIONS, DEGRADED_BROWSER_SITES
+
+    _OBSERVED_DEGRADED_SECTIONS.add(DEGRADED_BROWSER_SITES)
+    if what not in _WARNED_BROWSER_VALUES:
+        _WARNED_BROWSER_VALUES.add(what)
+        logger.warning(
+            "config: %s, so the agent's browser opens no page until the value is fixed "
+            "and Kiro Crew restarts",
+            what,
+        )
+
+
+def coerce_site_list(raw: object, key: str) -> list[str]:
+    """``browser.sites.<key>`` as canonical entries; ``[]`` when unset or not a list.
+
+    Each entry is read by :func:`_site_entry`. Any other string (``*example.com``)
+    is KEPT as typed, with one warning: it never matches a page, so an allow list
+    of only such entries still refuses every site instead of imposing no limit.
+    Non-strings and duplicates are dropped, and past :data:`SITE_LIST_CAP` the rest
+    with one warning. A value that is set but is not a list loads as ``[]`` and is
+    recorded (:func:`_sites_unread`), so the navigate gate opens no page.
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        _sites_unread(f"browser.sites.{key} is not a list")
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    over = 0
+    warned = False
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            continue
+        entry = _site_entry(item)
+        if entry is None:
+            if not warned:  # one line per list, never one per bad entry
+                _warn_once(f"browser.sites.{key}", item[:253], "an entry that matches no site", ())
+                warned = True
+            entry = item.strip().lower()[:253]
+        if entry in seen:
+            continue
+        if len(out) >= SITE_LIST_CAP:
+            over += 1
+            continue
+        seen.add(entry)
+        out.append(entry)
+    if over:
+        _warn_once(f"browser.sites.{key}", f"{len(out) + over} entries", "the first 256", ())
+    return out
+
+
+@dataclass
+class BrowserSitesConfig:
+    """``browser.sites``: the sites the agent's browser may open, and those it may not."""
+
+    allow: list[str] = field(
+        default_factory=list,
+        metadata=_meta(
+            "Allowed sites",
+            "When not empty, the agent's browser opens only these sites: `example.com` "
+            "is that host, `*.example.com` is example.com and every name under it. "
+            "Checked on every page the browser lands on, after redirects and in new "
+            "tabs. Empty adds no limit.",
+        ),
+    )
+    deny: list[str] = field(
+        default_factory=list,
+        metadata=_meta(
+            "Blocked sites",
+            "Sites the agent's browser never opens, in the same form as the allowed "
+            "sites. A blocked site stays blocked even when the allowed sites cover it.",
+        ),
+    )
+
+    @classmethod
+    def from_raw(cls, section: object) -> "BrowserSitesConfig":
+        if section is None:
+            return cls()
+        if not isinstance(section, dict):
+            _sites_unread("browser.sites is not an object")
+            return cls()
+        return cls(
+            allow=coerce_site_list(section.get("allow"), "allow"),
+            deny=coerce_site_list(section.get("deny"), "deny"),
+        )
+
+
 @dataclass
 class BrowserConfig:
     """``browser``: the browser the agent drives, and the live view in chat.
@@ -347,6 +489,14 @@ class BrowserConfig:
             "The per-turn replay of the agent's browsing, and how much of it is kept.",
         ),
     )
+    sites: BrowserSitesConfig = field(
+        default_factory=BrowserSitesConfig,
+        metadata=_meta(
+            "Site lists",
+            "The sites the agent's browser may open and the sites it never opens. "
+            "Both empty adds no limit.",
+        ),
+    )
 
     @classmethod
     def from_raw(cls, section: object) -> "BrowserConfig":
@@ -367,4 +517,5 @@ class BrowserConfig:
             live=BrowserLiveConfig.from_raw(section.get("live")),
             credentials=BrowserCredentialsConfig.from_raw(section.get("credentials")),
             recording=BrowserRecordingConfig.from_raw(section.get("recording")),
+            sites=BrowserSitesConfig.from_raw(section.get("sites")),
         )

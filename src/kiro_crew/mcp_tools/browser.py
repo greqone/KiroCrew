@@ -141,6 +141,26 @@ def _url_allowed(url: Any) -> bool:
     )
 
 
+def _site_refusal(url: Any) -> str | None:
+    """The refusal for a URL the ``browser.sites`` lists refuse, read fresh, else None.
+
+    A config read that fails, or cannot see the lists, refuses every URL: the file
+    it could not read may hold the user's limit."""
+    try:
+        sites = url_gate.site_lists_of_config(KiroCrewConfig.load())
+    except Exception:  # noqa: BLE001 - a config read failure must not widen the gate
+        sites = url_gate.UNREAD_SITE_LISTS
+    rule = url_gate.site_rule(url, sites)
+    if rule is None:
+        return None
+    return (
+        f"Error: the browser tool did not open this address: {rule}. The user's site "
+        "lists (browser.sites.allow and browser.sites.deny) decide which sites the "
+        "browser may open. Do not edit them yourself or reach the site another way; "
+        "if the user wants it opened, ask them to change the list."
+    )
+
+
 def _gated_url(op: str, op_args: dict[str, Any]) -> Any:
     """The URL an op would open, or None when it opens none.
 
@@ -495,6 +515,9 @@ def browser(name: str, args: dict[str, Any]) -> "str | DeferredTool":
     gated = _gated_url(op, op_args)
     if gated is not None and not _url_allowed(gated):
         return _URL_GATE_TEXT
+    site_refused = _site_refusal(gated) if gated is not None else None
+    if site_refused is not None:
+        return site_refused
 
     # The caller's session key, resolved LENIENTLY like every other X-Session-Key
     # tool (artifacts, sessions, skills): on a default install the strict

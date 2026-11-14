@@ -98,6 +98,44 @@ The gate does not resolve DNS names. A hostname that later resolves to a private
 address can therefore pass this check, so a successful navigation is not proof
 that the destination is public.
 
+## Limiting the agent to some sites
+
+Two lists in `config.json` narrow where the agent's browser may go, on top of the
+rule above:
+
+- `browser.sites.allow`: when not empty, only these sites open.
+- `browser.sites.deny`: these sites never open, even when the allow list
+  covers them.
+
+An entry `example.com` is that host only; `*.example.com` is `example.com` and
+every name under it (`docs.example.com`, `a.b.example.com`), never
+`badexample.com`; `.example.com` reads as `*.example.com`. A pasted URL,
+`host/path` or `host:port` is read as its host, and a Unicode name as its ASCII
+(`xn--`) form. A name with `ß`, `ς` or a zero-width joiner is read differently
+by the two IDNA versions, so it matches no site: write its `xn--` form instead.
+Ports, paths and other wildcards are not part of an entry. An IP entry matches a
+URL written with that address in any form; a name that resolves to it is not
+resolved, so it is not caught.
+
+```
+kirocrew config set browser.sites.allow '["*.example.com"]'
+kirocrew config set browser.sites.deny '["admin.example.com"]'
+```
+
+The lists are checked on the address the agent asks for and again on every page
+the browser actually lands on: after a redirect, after a click or key that moves
+the page, and in a new tab or popup before the agent reads it. A refused page is
+left for `about:blank`, and the agent is told which rule refused it. With an allow
+list set, a local preview origin opens only when its host (`localhost`) is
+listed too. Both lists empty, the default, adds no limit. These lists apply to
+every chat; a per-chat list is not available yet.
+
+If the settings that hold the lists cannot be read (`config.json` or
+`config.local.json` does not parse, or `browser` or `browser.sites` is not an
+object, or `allow` or `deny` is not a list), the browser opens no page and the
+agent is told why: the file it could not read may hold your limit. The value is
+kept on disk as you wrote it; fix it and restart Kiro Crew.
+
 ## The live view
 
 Frames stream only to your own dashboard session, over the connection it already

@@ -203,6 +203,9 @@ class OpContext:
     #: redirect), not only to the one the agent asked for. The route wires the same
     #: predicate the shim applies before the op (``browser_harness.url_gate``).
     url_allowed: Callable[[str], bool] = lambda _url: True
+    #: Which of the operator's ``browser.sites`` rules refuses a URL ``url_allowed``
+    #: refused, so the refusal names the rule; ``None`` when no site list did.
+    site_rule: Callable[[str], str | None] = lambda _url: None
     screenshot_dir: Path = field(default_factory=lambda: Path(os.getcwd()))
     sleep: _SleepFn = _no_sleep
     now: Callable[[], float] = time.monotonic
@@ -673,6 +676,14 @@ async def _refuse_committed_url(ctx: OpContext, url: str) -> dict[str, Any] | No
         await ctx.helper("goto", url="about:blank")
     except Exception:  # noqa: BLE001 - the refusal stands even if the blank page fails
         logger.debug("navigate: could not leave the refused page", exc_info=True)
+    rule = ctx.site_rule(url)
+    if rule is not None:
+        # The landed address is the page's choice; the text names only the rule.
+        return refusal(
+            "redirect_refused",
+            f"the page landed on an address the user's site lists refuse: {rule}; "
+            "the tab was moved to about:blank",
+        )
     return refusal(
         "redirect_refused",
         f"the page redirected to {url[:120]}, which is not a public http(s) URL or a "

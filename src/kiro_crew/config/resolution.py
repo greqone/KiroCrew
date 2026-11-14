@@ -603,6 +603,23 @@ DEGRADED_TAILSCALE = "dashboard.tailscale"
 #: being unreadable and fails closed.
 DEGRADED_WORKSPACES = "workspaces"
 
+#: ``degraded_sections`` key for "``browser.sites`` (or its ``allow`` or ``deny``
+#: value) was not the shape the loader reads". The lists then load empty, which
+#: reads as no limit on the sites the agent's browser may open.
+DEGRADED_BROWSER_SITES = "browser.sites"
+
+
+def browser_site_lists_unknown(sections: frozenset[str]) -> bool:
+    """Whether *sections* means the browser's site lists could not be read.
+
+    An unreadable config FILE, an unreadable ``browser`` section and an unreadable
+    ``browser.sites`` value all load both lists empty, which reads as no limit, so
+    the navigate gate treats the three alike and opens no page. Lives here for the
+    same reason as :func:`tailnet_identity_unknown`: two gates ask it (the browser
+    tool's shim and the gateway's committed-URL check).
+    """
+    return bool(sections & {DEGRADED_WHOLE_CONFIG, "browser", DEGRADED_BROWSER_SITES})
+
 
 def tailnet_identity_unknown(sections: frozenset[str]) -> bool:
     """Whether *sections* means the tailnet login allowlist could not be read.

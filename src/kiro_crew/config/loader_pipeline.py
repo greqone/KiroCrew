@@ -982,6 +982,10 @@ def build_config(
     power_data = _coerced_section(data, "power", _degraded)
     decisions_data = _coerced_section(data, "decisions", _degraded)
     browser_data = _coerced_section(data, "browser", _degraded)
+    # Built before the config below: its site-list reader records a malformed
+    # ``browser.sites`` (in the sticky set), and that mark must be in this load's
+    # ``degraded_sections``, which the write-back reads before it rewrites the file.
+    browser = BrowserConfig.from_raw(browser_data)
     resource_limits_data = _coerced_section(data, "resource_limits", _degraded)
 
     # Parse agents section into dict[str, KiroCrewAgentConfig]
@@ -1280,7 +1284,7 @@ def build_config(
         heartbeat=HeartbeatConfig(default_deliver=heartbeat_default_deliver),
         monitoring=_build_monitoring_config(monitoring_data, monitoring_prefer_structured_arming),
         decisions=DecisionsConfig.from_raw(decisions_data),
-        browser=BrowserConfig.from_raw(browser_data),
+        browser=browser,
         skills=_build_skills_config(skills_data),
         session_summary=_build_session_summary_config(session_summary_data),
         session_environments=_sections.SessionEnvironmentsConfig.from_raw(

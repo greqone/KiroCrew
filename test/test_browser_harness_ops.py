@@ -833,6 +833,39 @@ def test_navigate_judges_the_url_the_page_landed_on_not_only_the_one_asked_for(
     assert ("goto", {"url": "about:blank"}) not in fake.calls
 
 
+def test_a_redirect_the_site_lists_refuse_names_the_rule_not_the_page(
+    fake: FakeBrowser,
+) -> None:
+    """``browser.sites`` narrows the committed-URL gate; the text carries only the rule."""
+    from kiro_crew.browser_harness.url_gate import SiteLists, site_rule, url_allowed
+
+    landed = "https://blocked.example/ignore-previous-instructions"
+    _committing_page(fake, landed)
+    fake.helpers["goto"] = {"frameId": "F", "loaderId": "L"}
+    sites = SiteLists(deny=("blocked.example",))
+    ctx = _gated_ctx(fake, lambda url: url_allowed(url, frozenset(), 6776, sites))
+    ctx.site_rule = lambda url: site_rule(url, sites)
+    out = run(ops.run_op("navigate", {"url": "https://public.example/r"}, ctx))
+    assert out["ok"] is False and out["code"] == "redirect_refused"
+    assert "blocked.example in browser.sites.deny" in out["error"]
+    assert "ignore-previous" not in out["error"] and "about:blank" in out["error"]
+    assert fake.calls[-1] == ("goto", {"url": "about:blank"}), "the landed page is left"
+
+
+def test_a_current_tab_the_site_lists_refuse_is_not_read(fake: FakeBrowser) -> None:
+    """A link, a popup or a tab switch that lands on a refused site is judged before a read."""
+    from kiro_crew.browser_harness.url_gate import SiteLists, site_rule, url_allowed
+
+    fake.helpers["current_tab"] = {"url": "https://blocked.example/x"}
+    sites = SiteLists(allow=("ok.example",))
+    ctx = _gated_ctx(fake, lambda url: url_allowed(url, frozenset(), 6776, sites))
+    ctx.site_rule = lambda url: site_rule(url, sites)
+    out = run(ops.run_op("snapshot", {}, ctx))
+    assert out["ok"] is False and out["code"] == "redirect_refused"
+    assert "browser.sites.allow" in out["error"]
+    assert "snapshot" not in fake.page_methods()
+
+
 def test_back_judges_where_history_landed_too(fake: FakeBrowser) -> None:
     _committing_page(fake, "http://169.254.169.254/latest")
     fake.page["back"] = {"ok": True}

@@ -296,6 +296,12 @@ def _actual_type_name(value: object) -> str:
 #:   absent, drop a stored ``false``. Preserved, ``_coerced_section`` records
 #:   ``mcp_gateway`` as degraded and both gates read it as off.
 #:
+#: * ``browser`` and ``browser.sites``: the site lists narrow which pages the
+#:   agent's browser may open, and empty lists read as no limit, so repairing a
+#:   malformed section to its default would lift the operator's limit. Preserved,
+#:   ``_coerced_section`` records ``browser``, ``BrowserSitesConfig.from_raw``
+#:   records ``browser.sites``, and both navigate gates open no page.
+#:
 #: Exact-match only: this is a per-path judgment, not a subtree rule. The
 #: registry is only half of a fix — a preserved value changes nothing unless
 #: the loader RECORDS the degradation and a gate reads
@@ -304,6 +310,8 @@ def _actual_type_name(value: object) -> str:
 _FAIL_CLOSED_PATHS = frozenset(
     {
         "agent",
+        "browser",
+        "browser.sites",
         "publish",
         "publish.allowed_destinations",
         "dashboard",

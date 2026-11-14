@@ -836,7 +836,11 @@ def _url_payload_command(n: int) -> str:
 #: and refusing a final name whose DNS lookup fails for any reason but "no such name",
 #: or a config where a case or trailing-dot spelling of the name could route elsewhere.
 #: Re-measured.
-_PACKAGE_LINE_BUDGET = 36_794
+#: Raised by 202, from 36,794, to 36,996, for ``ssh_floor_substitutions``: the
+#: ssh-to-self floor judges each command of an ``echo``/``printf`` substitution list
+#: its splice would erase, and pairs empty backticks left to right beside the
+#: pattern reading. Its two moved patterns are unchanged. Re-measured.
+_PACKAGE_LINE_BUDGET = 36_996
 
 #: Ceiling on any ONE file in the package. This is what the bound is really for --
 #: a package total says nothing about a single file growing back into a second

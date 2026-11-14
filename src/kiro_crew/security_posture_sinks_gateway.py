@@ -280,6 +280,18 @@ _GATEWAY_SINKS: tuple[tuple[str, str, str], ...] = (
         "state and binary pixel frames are unchanged.",
     ),
     (
+        "Browser action change reports",
+        "browser_harness/change_report.py",
+        "The `changes` report a click, type or select carries while "
+        "`browser.report_changes` is on: the page address, title, dialog names, "
+        "alert text, the names of fields that failed validation and control names, "
+        "all written by the page; no validation message is read. "
+        "Each string is cut to one bounded line, stripped of control characters and "
+        "passed through the platform-aware credential and exfiltration-URL redactor "
+        "before it reaches the agent; the address is cleaned by the recordings' "
+        "`clean_url` first. No field's value is read.",
+    ),
+    (
         "Subagent wait broadcasts",
         "subagent_manager/admission/waits.py",
         "The wait REASON on the `subagent_waiting` frame, which reaches every dashboard "

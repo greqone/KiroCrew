@@ -28,6 +28,12 @@
   // characters, so a snapshot past NODE_CAP nodes carries nothing it would show.
   var CONSOLE_TEXT_CAP = 2000;
   var NODE_CAP = 1500;
+  // `glance` bounds: elements looked at, entries per list, and the text kept for a
+  // name or a message (the gateway cuts them shorter and cleans them again).
+  var GLANCE_SCAN_CAP = 600;
+  var GLANCE_LIST_CAP = 10;
+  var GLANCE_NAME_CAP = 80;
+  var GLANCE_TEXT_CAP = 240;
   // Cross-origin frames one snapshot hands the gateway to read (ops.py FRAME_READ_CAP).
   var FRAME_SLOT_CAP = 8;
   var INTERACTIVE_TAGS = { a: true, button: true, input: true, select: true, textarea: true };
@@ -1071,6 +1077,140 @@
         }
       }
       return false;
+    },
+
+    // A cheap read of what an action can change, taken before and after it
+    // (`browser.report_changes`): the address and title, the in-page dialogs, the
+    // alert and status text, the name of each field the page marks invalid (never
+    // its message), and a `role|name` key for each visible control. It mints no refs and does not enter frames or
+    // shadow roots. A field is named by its label, never by its value, and a secret
+    // field is left out whole. `capped` names each list that stopped before the page
+    // did, so the gateway never reads a cut list as a complete one.
+    glance: function () {
+      var out = { url: location.href, title: document.title, controls: [], dialogs: [],
+                  alerts: [], invalid: [], truncated: false,
+                  capped: { dialogs: false, alerts: false, invalid: false } };
+      // Elements that are not text at all.
+      var NOT_TEXT = { script: 1, style: 1, template: 1, noscript: 1, datalist: 1 };
+      // Roles whose element shows its value as its own text, as any token of `role`.
+      var FIELD_ROLE_RE = /(^|\s)(textbox|searchbox|combobox|spinbutton|slider)(\s|$)/;
+      // Elements looked through in shadow roots, for the whole glance: a page past
+      // it has its remaining shadow hosts counted as fields. Each host is looked
+      // through once.
+      var shadowBudget = GLANCE_SCAN_CAP * 4, hosts = new Map();
+      function clip(text, cap) {
+        return String(text || "").replace(/\s+/g, " ").trim().slice(0, cap);
+      }
+      // The one test of "this is a field", for the controls scan and for every text
+      // read below: a native field, an editable region, an element with an input
+      // role, or a shadow host whose open root holds one. What a field holds is a
+      // value whatever its name says, so nothing inside one is ever read.
+      function fieldish(n, depth) {
+        var tag = n.tagName.toLowerCase();
+        if (tag === "input") return ["button", "submit", "reset", "image"].indexOf(inputType(n)) === -1;
+        if (tag === "textarea" || tag === "select" || n.isContentEditable) return true;
+        if (FIELD_ROLE_RE.test(explicitRole(n))) return true;
+        if (!n.shadowRoot) return false;
+        if (hosts.has(n)) return hosts.get(n);
+        var holds = depth > 3;
+        var all = holds ? [] : n.shadowRoot.querySelectorAll("*");
+        shadowBudget -= all.length;
+        if (shadowBudget < 0) holds = true;
+        for (var i = 0; !holds && i < all.length; i++) holds = fieldish(all[i], depth + 1);
+        hosts.set(n, holds);
+        return holds;
+      }
+      function skipped(n) {
+        return !!NOT_TEXT[n.tagName.toLowerCase()] || fieldish(n, 0);
+      }
+      // The text *node* shows, leaving out every field inside it, in one pass. A
+      // node inside a field (an id an attribute points at, an alert in an editor)
+      // is part of that field's value and reads as nothing.
+      function ownText(node, cap) {
+        for (var up = node; up; up = up.parentElement) if (skipped(up)) return "";
+        var parts = [], length = 0, t;
+        var walk = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+          acceptNode: function (n) {
+            if (n.nodeType !== 1) return NodeFilter.FILTER_ACCEPT;
+            return skipped(n) || n.hidden ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
+          }
+        });
+        while (length < cap && (t = walk.nextNode())) {
+          parts.push(t.nodeValue);
+          length += t.nodeValue.length;
+        }
+        return clip(parts.join(" "), cap);
+      }
+      function idsText(el, attr) {
+        var parts = [];
+        var ids = (el.getAttribute(attr) || "").split(/\s+/).filter(Boolean);
+        for (var i = 0; i < ids.length && i < 4; i++) {
+          var n = document.getElementById(ids[i]);
+          if (n) parts.push(ownText(n, GLANCE_TEXT_CAP));
+        }
+        return clip(parts.join(" "), GLANCE_TEXT_CAP);
+      }
+      // A control's name from its labels and attributes; a field's own text and
+      // value never count, and a button's or link's own text does.
+      function nameOf(el, isField) {
+        var named = idsText(el, "aria-labelledby") || clip(el.getAttribute("aria-label"), GLANCE_NAME_CAP);
+        if (named) return named;
+        if (el.labels && el.labels.length) {
+          var l = ownText(el.labels[0], GLANCE_NAME_CAP);
+          if (l) return l;
+        }
+        if (!isField) {
+          var own = ownText(el, GLANCE_NAME_CAP) || clip(el.getAttribute("alt") || el.getAttribute("value"), GLANCE_NAME_CAP);
+          if (own) return own;
+        }
+        return clip(el.getAttribute("placeholder") || el.getAttribute("title") ||
+                    el.getAttribute("name"), GLANCE_NAME_CAP);
+      }
+      var scanned = document.querySelectorAll(
+        "a[href],button,input,select,textarea,[role],[tabindex],[contenteditable]");
+      for (var i = 0; i < scanned.length; i++) {
+        var el = scanned[i];
+        if (i >= GLANCE_SCAN_CAP) { out.truncated = true; break; }
+        var role = roleFor(el);
+        if (!interactive(el, role) || !visible(el)) continue;
+        // A field is named by its labels only: its own text would be its value.
+        var isField = fieldish(el, 0);
+        if (isField && secretish(el)) continue;
+        out.controls.push((role || "generic") + "|" + clip(nameOf(el, isField), GLANCE_NAME_CAP));
+      }
+      var found = document.querySelectorAll("dialog[open],[role=\"dialog\"],[role=\"alertdialog\"]");
+      for (var d = 0; d < found.length; d++) {
+        if (!shown(found[d])) continue;
+        if (out.dialogs.length >= GLANCE_LIST_CAP) { out.capped.dialogs = true; break; }
+        var head = found[d].querySelector("h1,h2,h3,[role=\"heading\"]");
+        out.dialogs.push(idsText(found[d], "aria-labelledby") ||
+          clip(found[d].getAttribute("aria-label"), GLANCE_NAME_CAP) ||
+          (head ? ownText(head, GLANCE_NAME_CAP) : "") || "dialog");
+      }
+      var live = document.querySelectorAll("[role=\"alert\"],[role=\"status\"],[aria-live=\"assertive\"]");
+      for (var a = 0; a < live.length; a++) {
+        if (!shown(live[a])) continue;
+        var said = ownText(live[a], GLANCE_TEXT_CAP);
+        if (!said) continue;
+        if (out.alerts.length >= GLANCE_LIST_CAP) { out.capped.alerts = true; break; }
+        out.alerts.push(said);
+      }
+      var fields = document.querySelectorAll("input,select,textarea");
+      for (var f = 0; f < fields.length; f++) {
+        if (f >= GLANCE_SCAN_CAP) { out.capped.invalid = true; break; }
+        var field = fields[f];
+        var flagged = field.getAttribute("aria-invalid") === "true";
+        if (!flagged) {
+          try { flagged = field.matches(":user-invalid"); } catch (e) { flagged = false; }
+        }
+        // A secret field is left out whole here too, as in the controls above.
+        if (!flagged || !shown(field) || secretish(field)) continue;
+        if (out.invalid.length >= GLANCE_LIST_CAP) { out.capped.invalid = true; break; }
+        // Named only: a validation message can repeat what was typed in any form,
+        // so none is read. The agent takes a snapshot when it needs the message.
+        out.invalid.push(clip(nameOf(field, true), GLANCE_NAME_CAP) || "field");
+      }
+      return out;
     }
   };
   return api;

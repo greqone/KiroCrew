@@ -7004,11 +7004,75 @@ must be `https://` (plain `http://` only to a loopback host), no redirect is
 followed, and an answer over 1 MiB is refused. The plan does not yet name an
 app's crons, MCP servers or agents, nor a bundled component's path, so those
 stay empty and such an app is refused (`market_undeclared_capability`, or a
-malformed component) until the API carries them. No route or dashboard view
-calls it yet.
+malformed component) until the API carries them. It also answers
+`ListListings` (one page: items and `nextCursor`) and `GetListing` (one
+`ListingView` by ref) for the App Store's Kiro Space source below.
+
+### 31a. A Kiro Space store is an App Store source the build offers
+
+A build that can reach a Kiro Space store sets one aiohttp key,
+`app["market_registries"]`, to a provider (`apps/market_registries.py`,
+`MarketRegistryProvider`): `offers()` (`[{id, label, web}]`, on the loop, no
+child process), `status(id)` (`{state: signed_in | needs_sign_in | no_access |
+unknown, account}`, in the executor), `client(id)` (on the loop, memory only;
+never `None`, raises `market_signed_out`; the object is both a `MarketClient`
+and a `MarketReader`), `sign_in(id)` and `sign_out(id)` (in the executor). The
+open-source build sets no provider and ships no store address.
+
+`config.json` keeps only the added store ids, top-level `market_registries`
+(a list of strings), never an address: the address is in the provider's code,
+and `config.json` is agent-writable. It is separate from the git `registries`
+list, so no reader of `_effective_registries()` has to skip a row with no git
+URL. The rule of §15 still holds: what is listed and what can be installed read
+one list. Every store route and the install factory call
+`require_usable_registry`: the id must be in `market_registries` AND in
+`offers()`, else `market_registry_unavailable`.
+
+`app["market_client_factory"]` is set by core, in an `app.on_startup` hook
+(`routes_market_registry.register_market_client_factory`), only when a provider
+is present: core registers its routes before a build contributes the provider.
+The factory reads the added ids from the live config snapshot (no I/O), refuses
+unless exactly one usable store is added, and returns `client(<id>)`.
+`shortcut:` one store per Kiro Crew; give the factory an id, and record the
+store on the installed app, when a second store exists.
+
+Routes in `apps/routes_market_registry.py`, each behind
+`require_owner_dashboard_request` before the body is read, registered before
+`/api/apps/{name}`:
+
+| Route | Answer |
+|---|---|
+| `GET /api/apps/market/registries` | `{offers, added, status}`; no provider: `offers: []`, `added: []` |
+| `PUT /api/apps/market/registries` | `{added: [id]}`; an id not offered is `400 market_registry_unknown`; removing an id drops its cached rows |
+| `POST /api/apps/market/registries/{id}/signin`, `/signout` | the provider's sign-in view (`state`, `reason`, `code`, `approvalPage`, https only); body must be `{}`; sign-out drops cached rows |
+| `GET /api/apps/market/listings?registry=<id>` | card rows, `truncated`, `status`; signed out: no rows; a failed read: `error.code` and a fresh `status` |
+| `GET /api/apps/market/listing?registry=<id>&ref=<ref>` | one listing row with the download count, uncached |
+
+Without a provider every route but the first answers `503
+market_registry_unavailable`, and the install routes keep answering `503
+market_client_unavailable`. Store calls run in the executor. Nothing logged or
+answered carries a token or the store CLI's output.
+
+The listing read pages `ListListings(kind=app, limit=100)` up to 10 pages and
+marks `truncated` when a cursor is left. Rows are cached in process memory only,
+an hour, keyed by store id and account; a disk copy in the data home would be a
+row an agent could rewrite. A row is installed only when an installed app's
+source is `market:<that ref>@<n>`; an installed app of the same name from any
+other source marks `nameTaken`. Store rows are never merged with git rows by
+name. The list row's download count is `absent` (the list's copy is not a real
+count yet); the detail shows it, or `unavailable`.
+
+A git catalog row whose installed app has a `market:` source carries
+`installedFrom: "market"` and never `updateAvailable`
+(`registry_pipeline/catalog._enrich_with_install_status`, read by both store
+listings and the update notes), so the git card cannot reinstall it from git.
+
+Each added store's sign-in lives under `<data home>/market-registries/<id>`
+(`registry_data_dir`), masked in every sandbox mode (security spec).
 
 Writers: `apps/marketplace_install.py`, `apps/market_client.py`,
-`apps/market_source.py`,
+`apps/market_source.py`, `apps/market_registries.py`,
+`apps/routes_market_registry.py`,
 `apps/manager_install.py` (`install_app`, `market_source` / `source_commit`),
 `apps/registry_pipeline/catalog.py` (`resolve_installed_trust_repository`).
 

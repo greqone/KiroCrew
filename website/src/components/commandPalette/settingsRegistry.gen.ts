@@ -2426,6 +2426,19 @@ export const SETTINGS_REGISTRY: SettingEntry[] =
     }
   },
   {
+    "id": "developer.quick-worker-check-before-a-hard-choice",
+    "label": "Quick worker check before a hard choice",
+    "labelKey": "pages.developer.featurePreviewsTab.worker_grill",
+    "description": "Two or three workers test a high-stakes choice and ask you at most three questions.",
+    "hint": "When a conductor meets a choice with two paths and a wrong pick is hard to undo, it offers to let two or three workers talk it through first, instead of a 45-minute debate. They check the facts themselves and ask you at most three questions.",
+    "tab": "developer",
+    "type": "toggle",
+    "occurrence": 1,
+    "params": {
+      "sub": "feature-previews"
+    }
+  },
+  {
     "id": "developer.remote-dispatch",
     "label": "Remote dispatch",
     "labelKey": "pages.developer.featurePreviewsTab.remote_dispatch",

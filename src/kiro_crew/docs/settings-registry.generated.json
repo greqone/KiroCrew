@@ -1413,6 +1413,14 @@
       "hint": "Only used when the judge above is the small model. Leave it on the judge agent's own model unless you want a cheaper one."
     },
     {
+      "id": "developer.quick-worker-check-before-a-hard-choice",
+      "label": "Quick worker check before a hard choice",
+      "tab": "developer",
+      "route": "/settings/developer/feature-previews?highlight=developer.quick-worker-check-before-a-hard-choice",
+      "description": "Two or three workers test a high-stakes choice and ask you at most three questions.",
+      "hint": "When a conductor meets a choice with two paths and a wrong pick is hard to undo, it offers to let two or three workers talk it through first, instead of a 45-minute debate. They check the facts themselves and ask you at most three questions."
+    },
+    {
       "id": "developer.remote-dispatch",
       "label": "Remote dispatch",
       "tab": "developer",

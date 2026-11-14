@@ -1928,6 +1928,14 @@
       "description": "Authenticates coding-activity sync when WakaTime is enabled."
     },
     {
+      "id": "security.ask-me-before-running-pre-approved-tools",
+      "label": "Ask me before running pre-approved tools",
+      "tab": "security",
+      "route": "/settings/security/safety?highlight=key%3Amcp.honour_auto_approve",
+      "description": "When off, tools that you or the agent marked as pre-approved run without asking you first.",
+      "configKey": "mcp.honour_auto_approve"
+    },
+    {
       "id": "security.denied-commands",
       "label": "Denied Commands",
       "tab": "security",
@@ -1979,6 +1987,14 @@
       "tab": "security",
       "route": "/settings/security/posture?highlight=security.config-pending",
       "description": "Review edits made to settings files outside Kiro Crew, then apply or discard them."
+    },
+    {
+      "id": "security.stop-the-agent-from-changing-its-own-permission-rules",
+      "label": "Stop the agent from changing its own permission rules",
+      "tab": "security",
+      "route": "/settings/security/safety?highlight=key%3Amcp.protect_kiro_permission_rules",
+      "description": "When off, the agent can edit the rules that let tools run without asking you, and so give itself more freedom.",
+      "configKey": "mcp.protect_kiro_permission_rules"
     },
     {
       "id": "security.trust-every-third-party-app",

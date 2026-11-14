@@ -126,6 +126,8 @@ export type {
   ConfigPendingLeaf,
   CredentialRedactionEngine,
   CredentialRedactionState,
+  SafetySwitchKey,
+  SafetySwitchesState,
   DeniedCommandsData,
   GovernanceScopeDetail,
   GovernanceScope,

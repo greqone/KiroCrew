@@ -64,6 +64,8 @@ export const SETTINGS_KEYWORDS: Record<string, string[]> = {
   'security.trust-this-machine-s-tailnet-name': ['lan', 'network', 'remote', 'expose', 'tailscale', 'origin'],
   'security.denied-commands': ['deny', 'denylist', 'blocklist', 'blocked commands', 'command rules'],
   'security.trust-every-third-party-app': ['apps', 'third party', 'auto approve apps', 'trust'],
+  'security.stop-the-agent-from-changing-its-own-permission-rules': ['kiro-cli', 'permissions.yaml', 'permission rules', 'protect_kiro_permission_rules'],
+  'security.ask-me-before-running-pre-approved-tools': ['mcp', 'autoApprove', 'auto approve', 'honour_auto_approve'],
 
   // General navigation
   'chat.split-view-session-grid': ['split pane', 'multi session', 'grid view'],

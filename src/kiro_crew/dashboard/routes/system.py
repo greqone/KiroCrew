@@ -263,6 +263,9 @@ def register(app: web.Application) -> None:
     # legitimate caller is the owner's browser.
     app.router.add_get("/api/security/credential-redaction", handlers.api_credential_redaction_get)
     app.router.add_put("/api/security/credential-redaction", handlers.api_credential_redaction_put)
+    # MCP safety switches, owner-gated in the handler like the redaction switch.
+    app.router.add_get("/api/security/safety-switches", handlers.api_safety_switches_get)
+    app.router.add_put("/api/security/safety-switches", handlers.api_safety_switches_put)
     app.router.add_get("/api/project-hooks/consent", handlers.api_project_hooks_consent_get)
     app.router.add_put("/api/project-hooks/consent", handlers.api_project_hooks_consent_put)
     app.router.add_post("/api/security/redacted-value", handlers.api_owner_value_reveal)

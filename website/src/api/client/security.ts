@@ -60,21 +60,17 @@ export interface AwsConsentStatus {
 }
 
 /**
- * The owner's credential-redaction switch (Settings > Security > Credential
- * redaction). `enabled` is the position as RECORDED by the backend, which reads a
- * missing or unreadable record as `true`; `changed_at` is empty until the owner
- * has flipped it at least once.
+ * The owner's one credential-redaction setting (Settings > Security > Redaction).
+ * `enabled` is the position in force, which the backend reads as `true` when the record
+ * cannot be read or a governance policy keeps redaction on; `changed_at` is empty until
+ * the owner has flipped it at least once. `engine` is the backend's own selector, which
+ * the dashboard shows no control for.
  */
 export interface CredentialRedactionState {
   enabled: boolean
   changed_at: string
-  /** Which engine redacts on every path. Absent (an older gateway) means structured. */
   engine?: CredentialRedactionEngine
   engine_changed_at?: string
-  /** The output-seams switch (the agent's prompt and the gateway's logs). Absent
-   *  from a server without it, which reads as ON. */
-  seams_enabled?: boolean
-  seams_changed_at?: string
 }
 
 /** `structured`: the structured detectors run first (default). `legacy`: the older pattern passes alone. */
@@ -607,13 +603,6 @@ export function createSecurityEndpoints({ get, post, put, del, patch, j, jfetch:
       fetch('/api/security/credential-redaction').then(j) as Promise<CredentialRedactionState>,
     setCredentialRedaction: (enabled: boolean) =>
       put('/api/security/credential-redaction', { enabled }).then(j) as Promise<CredentialRedactionState>,
-    /** The engine selector, in the same record: which engine redacts on every path. */
-    setCredentialRedactionEngine: (engine: CredentialRedactionEngine) =>
-      put('/api/security/credential-redaction', { engine }).then(j) as Promise<CredentialRedactionState>,
-    /** The second switch in the same record: one key per write, so this never
-     *  moves the file-view switch. */
-    setCredentialRedactionSeams: (enabled: boolean) =>
-      put('/api/security/credential-redaction', { seams_enabled: enabled }).then(j) as Promise<CredentialRedactionState>,
     /** The owner's per-folder choice to run a folder agent's own hooks on KAS.
      *  Owner only; the handler is the record's only dashboard writer. */
     setProjectHooksConsent: (folder: string, enabled: boolean) =>

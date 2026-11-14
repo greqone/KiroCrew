@@ -18,7 +18,7 @@ from typing import Any
 
 from aiohttp import web
 
-from kiro_crew import name_grant
+from kiro_crew import name_grant, redaction_seams
 from kiro_crew.acp.client import AcpAuthRequired
 from kiro_crew.acp_backends import (
     ACP_BACKEND_GOOSE,
@@ -376,6 +376,7 @@ async def _side_read_only_tools(side_backend: str | None) -> bool:
     return True
 
 
+@redaction_seams.in_seam(redaction_seams.CHAT)
 async def _run_side_turn(
     state: DashboardState,
     slot,

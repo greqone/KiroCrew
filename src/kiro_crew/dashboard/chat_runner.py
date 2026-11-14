@@ -33,6 +33,7 @@ from kiro_crew import (  # noqa: F401
     mcp_apps_render,
     model_registry,
     prompt_segments,
+    redaction_seams,
     resource_status,
     runtime_death,
     session_directive,
@@ -818,6 +819,7 @@ _TODO_BLOCK_READ_EVENT_KINDS = frozenset(
 )
 
 
+@redaction_seams.in_seam(redaction_seams.CHAT)
 @_hands_off_queue_on_exit
 async def _run_chat(
     state: DashboardState,

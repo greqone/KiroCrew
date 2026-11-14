@@ -170,9 +170,12 @@ def engine_mark() -> bytes:
     engine must not answer under the other, so every key names the engine that
     computed it.
     """
+    from kiro_crew import redaction_seams
     from kiro_crew.security.redaction_structured import compat
 
-    return _TABLE_ENGINE_MARK if compat.use_rule_table() else b""
+    mark = _TABLE_ENGINE_MARK if compat.use_rule_table() else b""
+    # Redaction published off answers differently from on, so the position is part of the key.
+    return mark + (b"\x02off" if redaction_seams.published_off() else b"")
 
 
 def engine_generation() -> int:
@@ -181,9 +184,10 @@ def engine_generation() -> int:
     A display answer is kept only when this is the same after it was computed as
     before, since :func:`engine_mark` alone reads the same across such a round trip.
     """
+    from kiro_crew import redaction_seams
     from kiro_crew.security.redaction_structured import compat
 
-    return compat.engine_generation()
+    return compat.engine_generation() + redaction_seams.generation()
 
 
 def _derive_key() -> bytes | None:

@@ -104,10 +104,12 @@ describe('useWebSocket credential_redaction_changed frame', () => {
     expect(tabs.result.current.tabs.some(t => t.kind === 'diff')).toBe(false)
   })
 
-  it('the shipped default (ON, never flipped, Settings never opened) purges nothing on a transient drop', async () => {
+  it('a document that never read the switch purges when it is now ON even if never flipped (the default is OFF)', async () => {
+    // The shipped default is OFF, so a raw file body can be on screen with no flip on record;
+    // an ON the reconnect finds can only have come from the owner or a policy.
     const tabs = await reconnectWith({ server: { enabled: true, changed_at: '' } })
-    expect(tabs.result.current.tabs.some(t => t.kind === 'diff')).toBe(true)
-    expect(qc.getQueryData(['file-read', '/tmp/raw.txt'])).toEqual({ content: 'AKIA-raw-while-off' })
+    expect(tabs.result.current.tabs.some(t => t.kind === 'diff')).toBe(false)
+    expect(qc.getQueryData(['file-read', '/tmp/raw.txt'])).toBeUndefined()
   })
 
   it('a refused read (non-owner) is asked once, then the reconnect heal stops asking', async () => {
@@ -180,20 +182,5 @@ describe('useWebSocket credential_redaction_changed frame', () => {
     expect(queryFn).toHaveBeenCalledTimes(2)
     act(() => { release() })
     await waitFor(() => expect(preview.result.current.data?.text).toBe('[REDACTED: credential]'))
-  })
-
-  it('a settings-only frame (the prompt-and-logs switch) re-reads the settings and purges nothing', () => {
-    qc.setQueryData(['file-read', '/tmp/raw.txt'], { content: 'kept-body' })
-    qc.setQueryData(['credential-redaction'], { enabled: true, changed_at: '', seams_enabled: true })
-    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
-    renderHook(() => useWebSocket(), { wrapper })
-    const ws = WS_INSTANCES[0]
-    act(() => { ws.simulateOpen() })
-    act(() => { ws.simulateMessage({ type: 'credential_redaction_settings_changed', data: { enabled: true, changed_at: '', seams_enabled: false, seams_changed_at: '2026-01-01T00:01:00Z', engine: 'structured' } }) })
-    const keys = invalidateSpy.mock.calls.map(c => JSON.stringify(c[0]?.queryKey))
-    expect(keys).toContain(JSON.stringify(['credential-redaction']))
-    // Another owner tab shows the new position at once, before the re-read answers.
-    expect((qc.getQueryData(['credential-redaction']) as { seams_enabled?: boolean }).seams_enabled).toBe(false)
-    expect(qc.getQueryData(['file-read', '/tmp/raw.txt'])).toEqual({ content: 'kept-body' })
   })
 })

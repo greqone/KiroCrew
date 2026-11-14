@@ -32,6 +32,7 @@ from kiro_crew.jwt_header import is_jwt_header
 from kiro_crew.security import _submodule
 
 from . import pass_compose, redaction, stream_aws_anchor
+from .redaction_switch import credential_pass_bypassed
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -374,6 +375,8 @@ class StreamRedactor:
 
     def feed(self, chunk: str) -> str:
         """Accept a chunk; return the redacted prefix that is safe to emit now."""
+        if credential_pass_bypassed():
+            return self._feed_bypassed(chunk)
         # Owners of the re-exported names read below, resolved through the
         # import system so the value is read from the one place it lives.
         _redaction = _submodule("redaction")
@@ -700,6 +703,12 @@ class StreamRedactor:
             return ""  # whole buffer is a (possibly partial) credential run — hold
         commit, self._buf = self._buf[:i], self._buf[i:]
         return self._redact_window(commit)
+
+    def _feed_bypassed(self, chunk: str) -> str:
+        """:meth:`feed` with redaction off for this stream: nothing is held, altered or dropped."""
+        out = self._buf + chunk
+        self.reset()
+        return out
 
     def release_at_boundary(self) -> str:
         """At a display boundary, emit what only the detectors' fixed tail held back.

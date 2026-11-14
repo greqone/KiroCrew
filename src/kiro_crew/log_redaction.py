@@ -123,15 +123,15 @@ class SecretRedactionFilter:
     def redact(self, text: str) -> str:
         """Replace secret values, Bearer tokens, AWS key IDs, JWTs and ``token`` values.
 
-        Zero I/O — only applies pre-compiled patterns. With the owner's output-seams
-        switch off (``redaction_seams.seams_off``) only the secret values are replaced.
+        Zero I/O — only applies pre-compiled patterns. With the owner's
+        redaction setting off (``redaction_seams.published_off``) only the secret values are replaced.
         """
         # The literal vault-secret pass runs whatever the owner chose: these are
         # values the gateway resolved itself, never a shape guess.
         if self._secret_pattern is not None:
             text = self._secret_pattern.sub("[REDACTED]", text)
         # The shape passes below are the LOGS output seam.
-        if redaction_seams.seams_off():
+        if redaction_seams.published_off():
             return text
         return redact_log_shapes(text)
 
@@ -139,7 +139,7 @@ class SecretRedactionFilter:
 def redact_log_shapes(text: str) -> str:
     """The shape passes over a log line: Bearer tokens, AWS key IDs, JWTs, ``token`` values.
 
-    Zero I/O. :class:`SecretRedactionFilter` skips them with the owner's seams switch
+    Zero I/O. :class:`SecretRedactionFilter` skips them with the owner's redaction setting
     off; a sink that reaches anyone but the owner (the dashboard's live log stream)
     applies them itself then.
     """

@@ -22,6 +22,7 @@ from collections.abc import Callable
 from threading import RLock
 from typing import Any, cast
 
+from kiro_crew import redaction_seams
 from kiro_crew.dashboard import display_verdicts as _display_verdicts
 from kiro_crew.dashboard.chat_utils_slots import effective_session_key
 from kiro_crew.dashboard.display_battery import display_battery
@@ -606,6 +607,7 @@ def _display_scope_changes_battery() -> bool:
     return credential_pass_bypassed() or not bare_secret_pass_enabled()
 
 
+@redaction_seams.in_seam(redaction_seams.CHAT)
 def _redact_for_display(text: str) -> str:
     """Apply all display redactors, reusing only an exact content-hash match.
 

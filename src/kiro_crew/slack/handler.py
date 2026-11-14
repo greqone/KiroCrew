@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING, Any, cast
 if TYPE_CHECKING:
     from kiro_crew.dashboard.state import DashboardState
 
-from kiro_crew import name_grant, runtime_death
+from kiro_crew import name_grant, redaction_seams, runtime_death
 from kiro_crew._facade_compose import compose as _facade_compose
 from kiro_crew.acp.client import AcpError, AcpProcessDied, AcpPromptBusy, AcpTimeoutError
 from kiro_crew.acp.types import (
@@ -938,6 +938,7 @@ class MessageContext:
 _COMMENT_HOLD_MAX = 1024
 
 
+@redaction_seams.in_seam(redaction_seams.CHANNELS)
 async def handle_message(
     slack: SlackClientOps,
     sessions: SessionManager,

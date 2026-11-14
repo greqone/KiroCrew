@@ -322,7 +322,7 @@ describe('SecurityPanel — redaction allowed hosts', () => {
     renderWithProviders(<SecurityPanel />, { route: '/?section=redaction' })
     expect(await screen.findByText('reviews.corp.example')).toBeTruthy()
     expect(screen.getByText('Workspace: default')).toBeTruthy()
-    expect(screen.getByTestId('redaction-settings-note').textContent).toContain('always on')
+    expect(screen.getByTestId('redaction-settings-note').textContent).toContain('long-query')
     fireEvent.click(screen.getByTestId('redaction-revoke'))
     await waitFor(() => expect(api.redactionRevokeHost).toHaveBeenCalledWith('default', 'reviews.corp.example'))
   })

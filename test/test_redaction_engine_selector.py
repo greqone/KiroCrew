@@ -1,9 +1,8 @@
 """The owner's engine selector: the structured detectors (default) or main's legacy passes.
 
 It lives in the same keystone record as the credential-redaction switch
-(``security.redaction_switch``) and is separate from it: the switch decides whether
-the owner's Files view is redacted at all, the selector decides which engine
-redacts everywhere. ``compat.use_rule_table()`` reads the selector.
+(``security.redaction_switch``) and is separate from it: the setting decides whether
+credential redaction runs at all, the selector decides which engine redacts while it does. ``compat.use_rule_table()`` reads the selector.
 
 Every credential here is synthetic and assembled at run time.
 """
@@ -98,17 +97,14 @@ def test_legacy_when_chosen(store):
     assert redact_credentials(f"id {key_id} end")[0] == f"id {key_id} end"
 
 
-def test_the_choice_round_trips_and_keeps_the_switch(store):
+def test_the_choice_round_trips_and_keeps_the_setting(store):
     redaction_switch.set_enabled(False, changed_at="t0")
-    redaction_switch.set_seams_enabled(False, changed_at="t0s")
     redaction_switch.set_engine(redaction_switch.ENGINE_LEGACY, changed_at="t1")
     raw = json.loads(store.read_text(encoding="utf-8"))
     assert raw["enabled"] is False and raw["engine"] == "legacy"
-    # The engine has its own time; neither switch's "off since" moves.
-    assert raw["changed_at"] == "t0" and raw["seams_changed_at"] == "t0s"
-    assert raw["seams_enabled"] is False and raw["engine_changed_at"] == "t1"
+    # The engine has its own time; the setting's "off since" does not move.
+    assert raw["changed_at"] == "t0" and raw["engine_changed_at"] == "t1"
     redaction_switch.set_enabled(True, changed_at="t2")
-    redaction_switch.set_seams_enabled(True, changed_at="t2s")
     assert redaction_switch.read_engine() == redaction_switch.ENGINE_LEGACY
     redaction_switch.set_engine(redaction_switch.ENGINE_STRUCTURED, changed_at="t3")
     assert json.loads(store.read_text(encoding="utf-8"))["enabled"] is True
@@ -140,7 +136,9 @@ async def test_put_engine_records_audits_and_takes_effect(store, audit):
     resp = await api_credential_redaction_put(req)
     assert resp.status == 200
     body = json.loads(resp.text)
-    assert body["engine"] == "legacy" and body["enabled"] is True
+    assert (
+        body["engine"] == "legacy" and body["enabled"] is redaction_switch.DEFAULT_REDACTION_ENABLED
+    )
     assert json.loads(store.read_text(encoding="utf-8"))["engine"] == "legacy"
     assert ("engine_legacy", True) in audit
     assert compat.use_rule_table() is False

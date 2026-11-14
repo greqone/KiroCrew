@@ -49,7 +49,7 @@ from itertools import chain, islice  # noqa: F401
 from pathlib import Path
 from typing import Any
 
-from kiro_crew import mcp_apps_render, model_registry  # noqa: F401
+from kiro_crew import mcp_apps_render, model_registry, redaction_seams  # noqa: F401
 from kiro_crew.agent import kiro_agents_dir_path  # noqa: F401
 from kiro_crew.agent_discovery import agent_model_map  # noqa: F401
 from kiro_crew.atomic_write import TRANSCRIPT_REPLACE_BUDGET_SECONDS, atomic_write
@@ -620,14 +620,19 @@ def _build_message_entry(m: dict, *, attachments: tuple[Path, str] | None = None
     # so serving it to another session would point that session's transcript at
     # a file its own delete will never reclaim. Folded in AFTER the digest rather
     # than into its input, so the message payload keeps exactly one hashing site.
-    key = f"{attachments}\x00{key}"
+    # The redaction setting is part of the key too: an entry built with redaction off
+    # holds raw bytes, which a hit must never hand out once it is on again.
+    generation = redaction_seams.generation()
+    key = f"{attachments}\x00{redaction_seams.published_off()}\x00{key}"
     size = len(payload)
     with _entry_cache_lock:
         if key in _entry_cache:
             _entry_cache.move_to_end(key)
             return _entry_cache[key][0]
     entry = _build_message_entry_uncached(m, attachments=attachments)
-    if size > _ENTRY_MAX_CACHEABLE_BYTES:
+    # A build that spanned a change of the redaction setting may hold either position's
+    # bytes under the other's key, so it is not stored.
+    if size > _ENTRY_MAX_CACHEABLE_BYTES or redaction_seams.generation() != generation:
         return entry
     # Refuse to STORE a pairing whose key and entry may describe different states.
     # The flush thread shares message dicts with the event loop, so a variant
@@ -675,7 +680,8 @@ def _build_message_line(
     """
     from kiro_crew.dashboard.slot_persistence.transcript_merge import _row_digest
 
-    key = f"{attachments}\x00{digest.hex()}"
+    generation = redaction_seams.generation()
+    key = f"{attachments}\x00{redaction_seams.published_off()}\x00{digest.hex()}"
     with _entry_cache_lock:
         hit = _entry_cache.get(key)
         if hit is not None and hit[2] is not None:
@@ -683,7 +689,8 @@ def _build_message_line(
             return hit[0], hit[2]
     entry = _build_message_entry_uncached(m, attachments=attachments)
     line = "" if entry is None else json.dumps(entry) + "\n"
-    if len(line) <= _ENTRY_MAX_CACHEABLE_BYTES and _row_digest(m) == digest:
+    stable = redaction_seams.generation() == generation
+    if stable and len(line) <= _ENTRY_MAX_CACHEABLE_BYTES and _row_digest(m) == digest:
         _entry_cache_store(key, (entry, len(line), line))
     return entry, line
 

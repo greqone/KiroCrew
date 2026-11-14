@@ -73,6 +73,7 @@ from .redaction import (
     redact_credentials,
 )
 from .redaction_entropy import _outlook_web_link_tail
+from .redaction_switch import credential_pass_bypassed
 
 logger = logging.getLogger(__name__)
 
@@ -522,13 +523,9 @@ _BLOCKED_LINK_URL_WITHHELD = frozenset({"credential", "length"})
 
 
 def _credential_clean(value: str) -> bool:
-    """Whether the credential remover leaves *value* unchanged in every form.
-
-    Checked as written AND in every bounded percent-decoded form. A partially
-    encoded credential (``ghp%5F...``) is unchanged by the remover as literal text
-    while a browser decodes it back into the secret the moment it is requested.
-    Saturation fails closed: a value still decodable when the budget runs out was
-    never seen in plaintext by anything.
+    """Whether the credential remover leaves *value* unchanged as written and in every bounded
+    percent-decoded form (``ghp%5F...`` is a literal to the remover, a secret to a browser).
+    Saturation fails closed: a value still decodable when the budget runs out is not clean.
     """
     if redact_credentials(value)[0] != value:
         return False
@@ -820,6 +817,8 @@ def redact_exfiltration_urls_with_records(
     # link on a host the reader allowed is neither redacted nor reported. A
     # snapshot is the whole set, so neither source is read again; hosts compare
     # lowercase either way (RFC 4343).
+    if credential_pass_bypassed():  # the owner turned redaction off: URLs stay as written
+        return text, [], []
     if exempt_hosts is None:
         exempt_hosts = _exfil_exempt_hosts() | _SCOPED_EXEMPT_HOSTS.get()
     else:

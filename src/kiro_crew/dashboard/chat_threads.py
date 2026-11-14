@@ -27,7 +27,7 @@ from typing import Any
 
 from aiohttp import web
 
-from kiro_crew import name_grant
+from kiro_crew import name_grant, redaction_seams
 from kiro_crew.acp_backends import (
     ACP_BACKEND_GOOSE,
     ACP_BACKEND_STRANDS,
@@ -891,6 +891,7 @@ def _is_auth_required(exc: BaseException) -> bool:
     return type(exc).__name__ == "AcpAuthRequired"
 
 
+@redaction_seams.in_seam(redaction_seams.CHAT)
 async def _run_thread_turn(
     state: DashboardState,
     slot: _ChatSlot,

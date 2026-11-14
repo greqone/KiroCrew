@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any
 
 from aiohttp import web
 
+from kiro_crew import redaction_seams
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -116,6 +118,7 @@ def _fresh_governance(decide: Callable[[], Any]) -> tuple[int | None, int | None
     return opened, _generation_now(), answer
 
 
+@redaction_seams.in_seam(redaction_seams.CHANNELS)
 async def _deliver_channel_dm(
     state: DashboardState,
     channel_type: str,
@@ -358,6 +361,7 @@ def _cron_job_for(state: DashboardState, caller_session: str) -> Any | None:
     return next((j for j in jobs if j.id == cron_id), None)
 
 
+@redaction_seams.in_seam(redaction_seams.CHANNELS)
 async def _deliver_to_channel(
     state: DashboardState,
     session_key: str,
@@ -694,6 +698,7 @@ async def _deliver_to_channel(
     return True, "", ""
 
 
+@redaction_seams.in_seam(redaction_seams.CHANNELS)
 async def _send_to_channel_target(
     state: DashboardState,
     channel_type: str,

@@ -3250,22 +3250,19 @@ denial of this capability refuses even on an otherwise ungoverned host, and
 an unreadable ceiling or profile fails closed. Every grant, denial and evaluation
 error is emitted through `sel().log_governance_decision`, including the session,
 agent, capability and reason; audit failures never change the permission result),
-and `capabilities.credential_redaction_off` (opt-in, `capability_default=False`:
-on a host whose policy governs any scope, only a policy that names this row
-`enabled: true` lets the owner turn credential redaction off in the Files view.
-`security.redaction_switch.owner_may_disable` reads it at the policy layer only
-(`policy_level_control`, so an LTS build reads the baseline's off; a
-profile does not take part), and an unreadable ceiling keeps redaction on. A
-folded ceiling (`lower_tier_folded`) also keeps it on, even when the top tier
-named the row itself, because the fold does not say which tier did. What
-the switch then does is in [security](security.md), "Owner's credential-redaction
-switch"), and `capabilities.credential_redaction_seams_off` (the same opt-in rule,
-a row of its own: only a policy that names it `enabled: true` lets the owner turn
-credential redaction off for the conversation replayed into the agent's prompt and
-for server log lines; `owner_may_disable_seams` reads it the same way. The Files-view
-row does not grant it, because those sinks reach the external model provider and the
-logs, which the Files-view opt-in never covered; see [security](security.md),
-"Owner's output-seams switch").
+and the two credential-redaction rows `capabilities.credential_redaction_off` and
+`capabilities.credential_redaction_seams_off` (opt-ins, `capability_default=False`:
+on a host whose policy governs any scope, credential redaction is ON, whatever the
+owner stored and whatever the default, unless the TOP policy tier names BOTH rows
+`enabled: true`. One row covers the owner's own screen, the other the external model
+provider and the logs, so an administrator who refused either keeps it refused.
+`security.redaction_switch.owner_may_disable` reads them at the policy layer only
+(`policy_level_control`, so an LTS build reads the baseline's off; a profile does
+not take part), and an unreadable ceiling keeps redaction on. A folded ceiling
+(`lower_tier_folded`) also keeps it on, even when the top tier named the rows itself,
+because the fold does not say which tier did. The PUT's refusal names the first row
+that is missing. What the setting then does is in [security](security.md), "Owner's
+credential-redaction setting").
 Only the live `approval_mode` clamp remains reserved.
 
 The `commands` scope now **doubles as the enterprise force-pin** for built-in

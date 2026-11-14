@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 from aiohttp import web
 
+from kiro_crew import redaction_seams
 from kiro_crew.members import member_identity_for_session
 
 if TYPE_CHECKING:
@@ -377,6 +378,7 @@ async def api_delete_message(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+@redaction_seams.in_seam(redaction_seams.CHANNELS)
 async def api_update_message(request: web.Request) -> web.Response:
     """POST /api/update-message — edit a bot-authored Slack message in place.
 

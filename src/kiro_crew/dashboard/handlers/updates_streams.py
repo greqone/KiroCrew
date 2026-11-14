@@ -148,7 +148,7 @@ _REDACTING = threading.local()
 
 
 def _stream_safe(msg: str) -> str:
-    """*msg* as the live log stream may carry it: redacted, whatever the seams switch says.
+    """*msg* as the live log stream may carry it: redacted, whatever the owner's redaction setting says.
 
     The stream reaches every dashboard-user socket and ``log``-scoped apps, not only
     the owner, so it is not an output seam. The switch read here would not say how

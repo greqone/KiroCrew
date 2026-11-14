@@ -39,9 +39,14 @@ def _synth_exfil_url() -> str:
 
 @pytest.fixture(autouse=True)
 def _isolated_switch(tmp_path, monkeypatch):
-    """Point the switch at a tmp keystone and drop any cached verdict."""
+    """Point the switch at a tmp keystone; these tests read the record as ON unless it says off.
+
+    The shipped default is OFF (``test_redaction_one_setting.py`` pins it), so the
+    constant is flipped here: the one line that turns the default back to ON.
+    """
     store = tmp_path / "credential_redaction.json"
     monkeypatch.setattr(redaction_switch, "_path", lambda: store, raising=True)
+    monkeypatch.setattr(redaction_switch, "DEFAULT_REDACTION_ENABLED", True)
     yield store
 
 
@@ -149,12 +154,12 @@ class TestSwitchedOffInsideOwnerView:
         with _owner_view():
             assert security.redact_credentials(key)[0] != key
 
-    def test_exfiltration_url_redaction_is_untouched_inside_owner_view(self):
+    def test_exfiltration_url_redaction_stands_down_inside_owner_view(self):
         _off()
         url = _synth_exfil_url()
         with _owner_view():
-            assert security.redact_exfiltration_urls(url)[0] != url
-            assert security.redact(url) != url
+            assert security.redact_exfiltration_urls(url)[0] == url
+        assert security.redact_exfiltration_urls(url)[0] != url
 
     def test_the_verdict_is_the_one_the_scope_was_entered_with(self):
         """One render, one verdict: a flip mid-render is seen by the NEXT request."""
@@ -270,12 +275,11 @@ class TestSwitchedOffOutsideOwnerView:
             "src/kiro_crew/security/redaction_switch.py",
         }, files
 
-    def test_the_chat_surface_never_opens_the_scope(self):
-        """Chat is OUT of scope, and deliberately so: ``_flush_segment`` redacts the
-        assistant text BEFORE ``slot.append``, so the transcript holds the redacted
-        bytes and no display-time scope could restore them; the live SSE/WS streams
-        fan one chunk to every connected client besides. An owner-view seam there
-        would advertise a raw transcript it cannot deliver."""
+    def test_the_chat_surface_never_opens_the_owner_view(self):
+        """Chat opens the ``chat`` output seam (``redaction_seams``), never ``owner_view``: the
+        owner-view scope is the Files view's, entered only after the requester is verified
+        as the owner. A chat turn's audience is every connected client, so it takes the
+        process-wide verdict the gateway publishes instead of a per-request one."""
         import inspect
         import sys
         from pathlib import Path
@@ -381,16 +385,12 @@ class TestTheMotivatingLinkThroughTheFileViewerPath:
         assert "token=" in out or "REDACTED" in out
         assert link.split("token=")[1] not in out
 
-    def test_in_the_public_build_the_exfil_pass_still_hides_the_link_when_off(self):
-        """Stated limit: the switch reaches the credential pass only. A long
-        base64 query to a non-exempt host is independently classified as
-        exfiltration and replaced whole, switch or no switch."""
+    def test_in_the_public_build_the_link_renders_when_off(self):
+        """With the setting off the exfil pass leaves the approval link as written."""
         from kiro_crew.platform.context import redact_owner_view_via_context
 
         link = _synth_approval_link()
-        out = redact_owner_view_via_context(link)
-        assert link.split("token=")[1] not in out
-        assert "REDACTED" in out
+        assert redact_owner_view_via_context(link) == link
 
     def test_with_a_companion_host_exemption_the_link_renders_raw_when_off(self, monkeypatch):
         """The internal companion exempts its approval hosts from the exfil
@@ -508,8 +508,6 @@ class TestHandlers:
         assert json.loads(resp.text) == {
             "enabled": True,
             "changed_at": "",
-            "seams_enabled": True,
-            "seams_changed_at": "",
             "engine": "structured",
             "engine_changed_at": "",
         }
@@ -621,7 +619,9 @@ class TestHandlers:
 
         src = inspect.getsource(api_credential_redaction_put)
         closure = src[src.index("def _write_and_audit") : src.index("try:\n        state = await")]
-        assert closure.index("outcome=outcome,") < closure.index("state = write(")
+        assert closure.index("outcome=outcome,") < closure.index(
+            "state = redaction_switch.set_enabled("
+        )
         assert closure.count("critical=True") == 2
         assert "asyncio.to_thread(_write_and_audit)" in src
         # The whole pair runs under the store lock, so two interleaving PUTs
@@ -809,7 +809,7 @@ class TestGovernedHost:
             ("credential_redaction.write", redaction_switch.DISABLE_SCOPE)
         ]
         # The record is kept: an opt-in lets the owner's earlier OFF apply again.
-        _host_policy(monkeypatch, {**_GOVERNED, **_OPT_IN})
+        _host_policy(monkeypatch, {**_GOVERNED, **_BOTH_OPT_IN})
         assert redaction_switch.read_state().enabled is False
 
     @pytest.mark.asyncio
@@ -818,9 +818,11 @@ class TestGovernedHost:
         [
             ({}, True),
             ({"sandbox": {"require_isolation": True}}, True),
-            ({**_GOVERNED, **_OPT_IN}, True),
-            (_OPT_IN, True),
+            ({**_GOVERNED, **_BOTH_OPT_IN}, True),
+            (_BOTH_OPT_IN, True),
             (_GOVERNED, False),
+            ({**_GOVERNED, **_OPT_IN}, False),
+            ({**_GOVERNED, **_SEAMS_OPT_IN}, False),
             ({**_GOVERNED, "capabilities": {"credential_redaction_off": {}}}, False),
         ],
     )
@@ -843,67 +845,54 @@ class TestGovernedHost:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "controls, files_allowed, seams_allowed",
+        "controls, allowed, missing",
         [
-            (_GOVERNED, False, False),
-            # The Files-view opt-in covers the owner's own screen and nothing else.
-            ({**_GOVERNED, **_OPT_IN}, True, False),
-            ({**_GOVERNED, **_SEAMS_OPT_IN}, False, True),
-            ({**_GOVERNED, **_BOTH_OPT_IN}, True, True),
-            ({**_GOVERNED, "capabilities": {"credential_redaction_seams_off": {}}}, False, False),
-            ({}, True, True),
+            (_GOVERNED, False, redaction_switch.DISABLE_SCOPE),
+            # Each row covers a different sink, so neither alone lets redaction stay off.
+            ({**_GOVERNED, **_OPT_IN}, False, redaction_switch.SEAMS_DISABLE_SCOPE),
+            ({**_GOVERNED, **_SEAMS_OPT_IN}, False, redaction_switch.DISABLE_SCOPE),
+            ({**_GOVERNED, **_BOTH_OPT_IN}, True, None),
+            ({**_GOVERNED, "capabilities": {"credential_redaction_seams_off": {}}}, False, None),
+            ({}, True, None),
         ],
     )
-    async def test_each_switch_answers_to_its_own_capability_row(
-        self, monkeypatch, _isolated_switch, _quiet_audit, controls, files_allowed, seams_allowed
+    async def test_both_capability_rows_are_needed(
+        self, monkeypatch, _isolated_switch, _quiet_audit, controls, allowed, missing
     ):
-        """The prompt-and-logs switch is not freed by the Files-view opt-in, nor the reverse."""
+        """OFF reaches the owner's screen, the model provider and the logs: it needs both rows."""
         from kiro_crew.dashboard.handlers.credential_redaction import api_credential_redaction_put
 
         _host_policy(monkeypatch, controls)
-        files = await api_credential_redaction_put(_request(body={"enabled": False}))
-        seams = await api_credential_redaction_put(_request(body={"seams_enabled": False}))
-        assert files.status == (200 if files_allowed else 403)
-        assert seams.status == (200 if seams_allowed else 403)
-        state = redaction_switch.read_state()
-        assert state.enabled is (not files_allowed)
-        assert state.seams_enabled is (not seams_allowed)
-        if not seams_allowed:
-            assert json.loads(seams.text)["code"] == "credential_redaction_locked_by_policy"
-            assert ("credential_redaction.write", redaction_switch.SEAMS_DISABLE_SCOPE) in (
-                _quiet_audit.refusals
-            )
-        redaction_switch.publish_seams(state)
+        resp = await api_credential_redaction_put(_request(body={"enabled": False}))
+        assert resp.status == (200 if allowed else 403)
+        assert redaction_switch.read_state().enabled is (not allowed)
+        if not allowed:
+            assert json.loads(resp.text)["code"] == "credential_redaction_locked_by_policy"
+            if missing is not None:
+                assert ("credential_redaction.write", missing) in _quiet_audit.refusals
+        redaction_switch.publish_verdict(redaction_switch.read_state())
         try:
             with redaction_seams.output_seam(redaction_seams.LOGS):
-                assert redaction_switch.credential_pass_bypassed() is seams_allowed
+                assert redaction_switch.credential_pass_bypassed() is allowed
         finally:
-            redaction_switch.publish_seams(redaction_switch.RedactionState(True, ""))
+            redaction_switch.publish_verdict(redaction_switch.RedactionState(True, ""))
 
-    def test_a_stored_seams_off_reads_on_under_the_files_view_opt_in(
+    def test_a_stored_off_reads_on_until_both_rows_are_opted_in(
         self, monkeypatch, _isolated_switch
     ):
-        """An OFF the owner stored for the seams does not apply on the strength of the other row."""
-        redaction_switch.set_seams_enabled(False, changed_at="t0")
+        """An OFF the owner stored does not apply on the strength of one row."""
+        _off()
         _host_policy(monkeypatch, {**_GOVERNED, **_OPT_IN})
-        assert redaction_switch.owner_may_disable() is True
-        assert redaction_switch.owner_may_disable_seams() is False
-        assert redaction_switch.read_state().seams_enabled is True
-        # The record is kept: the seams opt-in lets the owner's earlier OFF apply again.
-        _host_policy(monkeypatch, {**_GOVERNED, **_SEAMS_OPT_IN})
-        assert redaction_switch.read_state().seams_enabled is False
+        assert redaction_switch.owner_may_disable() is False
+        assert redaction_switch.read_state().enabled is True
+        # The record is kept: the second opt-in lets the owner's earlier OFF apply again.
+        _host_policy(monkeypatch, {**_GOVERNED, **_BOTH_OPT_IN})
+        assert redaction_switch.read_state().enabled is False
 
     @pytest.mark.parametrize(
-        "controls, allowed", [({}, False), (_SEAMS_OPT_IN, True), (_OPT_IN, False)]
+        "controls, allowed",
+        [({}, False), (_OPT_IN, False), (_SEAMS_OPT_IN, False), (_BOTH_OPT_IN, True)],
     )
-    def test_an_lts_build_keeps_the_seams_on_without_their_own_opt_in(
-        self, monkeypatch, controls, allowed
-    ):
-        monkeypatch.setattr("kiro_crew.edition.EDITION", "lts")
-        _host_policy(monkeypatch, controls)
-        assert redaction_switch.owner_may_disable_seams() is allowed
-
-    @pytest.mark.parametrize("controls, allowed", [({}, False), (_OPT_IN, True)])
     def test_an_lts_build_keeps_redaction_on_without_the_opt_in(
         self, monkeypatch, controls, allowed
     ):
@@ -941,7 +930,7 @@ class TestGovernedHost:
         self, monkeypatch, _isolated_switch, _quiet_tiers
     ):
         """Central governs another scope; a home document naming the opt-in grants nothing."""
-        self._ladder(monkeypatch, (_GOVERNED, "TIER_CENTRAL"), (_OPT_IN, "TIER_HOME"))
+        self._ladder(monkeypatch, (_GOVERNED, "TIER_CENTRAL"), (_BOTH_OPT_IN, "TIER_HOME"))
         _off()
         assert redaction_switch.owner_may_disable() is False
         assert redaction_switch.read_state().enabled is True
@@ -950,7 +939,7 @@ class TestGovernedHost:
         self, monkeypatch, _isolated_switch, _quiet_tiers
     ):
         """A fold refuses; the next central-only composition in the same process allows."""
-        central = ({**_GOVERNED, **_OPT_IN}, "TIER_CENTRAL")
+        central = ({**_GOVERNED, **_BOTH_OPT_IN}, "TIER_CENTRAL")
         self._ladder(monkeypatch, central, (_GOVERNED, "TIER_HOME"))
         _off()
         assert redaction_switch.owner_may_disable() is False

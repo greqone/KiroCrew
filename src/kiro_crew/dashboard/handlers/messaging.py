@@ -23,7 +23,7 @@ from typing import Any, Callable, cast  # noqa: F401
 
 from aiohttp import web
 
-from kiro_crew import platform_compat  # noqa: F401
+from kiro_crew import platform_compat, redaction_seams  # noqa: F401
 from kiro_crew._facade_compose import compose as _facade_compose
 from kiro_crew.agent_sdk.drivers.acp_vocab import NATIVE_CHILD_NOT_RESUMABLE  # noqa: F401
 from kiro_crew.config import live  # noqa: F401
@@ -613,6 +613,7 @@ _SLACK_ONLY_BODY_FIELDS = (
 _SLACK_SECTION_TEXT_MAX = 3000
 
 
+@redaction_seams.in_seam(redaction_seams.CHANNELS)
 async def api_send_message(request: web.Request) -> web.Response:
     """POST /api/send-message — send a message to a chat surface and/or dashboard.
 

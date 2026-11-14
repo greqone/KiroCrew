@@ -1331,18 +1331,21 @@ def redact_log_via_context(text: str) -> str:
     slicing a redacted string is what keeps a credential from surviving as an
     unmatchable fragment.
     """
-    # Not an output seam, whatever the owner's seams switch says. Callers clip the
+    # Not an output seam, whatever the owner's redaction setting says. Callers clip the
     # result (``redact_log_via_context(text)[:120]``) and the clip then goes to sinks
     # that stay redacted (the dashboard's live log stream, the SEL). A credential
     # pass that stood down here would let the clip cut a raw value into a fragment no
     # later pass can match, so the redact-before-clip rule above holds with the
     # switch off too. The switch covers the log record filter alone
     # (``log_redaction.SecretRedactionFilter``).
-    if installed_context() is None:
-        from kiro_crew.security import redact as _security_redact
+    from kiro_crew.security.redaction_switch import always_scan
 
-        return _security_redact(text)
-    try:
-        return redact_via_context(text)
-    except PlatformCompositionError:
-        return LOG_WITHHELD_PLACEHOLDER
+    with always_scan():
+        if installed_context() is None:
+            from kiro_crew.security import redact as _security_redact
+
+            return _security_redact(text)
+        try:
+            return redact_via_context(text)
+        except PlatformCompositionError:
+            return LOG_WITHHELD_PLACEHOLDER

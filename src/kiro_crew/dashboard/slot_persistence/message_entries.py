@@ -20,6 +20,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from kiro_crew import redaction_seams
 from kiro_crew.chat_attachments import ImageBudget
 from kiro_crew.dashboard.chat_utils import (
     UNKNOWN_ROW_FIELDS_KEY,
@@ -202,6 +203,7 @@ def _approx_window_payload_bytes(window: list[dict]) -> int:
     return total
 
 
+@redaction_seams.in_seam(redaction_seams.TRANSCRIPT)
 def _build_message_entry_uncached(
     m: dict, *, attachments: tuple[Path, str] | None = None
 ) -> dict | None:

@@ -59,11 +59,10 @@ export async function healRedactionSwitchAfterReconnect(qc: QueryClient): Promis
   }
   if (!after) return
   const moved = before !== undefined && after.enabled !== before.enabled
-  // Unknown position and ON: purge only if the switch has EVER been flipped
-  // (`changed_at` set). In the shipped default -- ON, never flipped, Settings
-  // never opened -- no raw body can exist, and a transient drop must not close
-  // every diff tab and empty every clean file body for nothing.
-  const unknownAndNowOn = before === undefined && after.enabled && !!after.changed_at
+  // Unknown position and ON: purge. The shipped default is OFF, so a file opened raw may be
+  // on screen even though the setting was never flipped; the gateway only reports ON here
+  // when the owner or a policy made it so.
+  const unknownAndNowOn = before === undefined && after.enabled
   if (moved || unknownAndNowOn) purgeDocumentBodiesForRedactionChange(qc)
 }
 
@@ -386,17 +385,6 @@ export function handleCredentialRedactionChanged(queryClient: QueryClient, d: { 
   }
   queryClient.invalidateQueries({ queryKey: ['credential-redaction'] })
   purgeDocumentBodiesForRedactionChange(queryClient)
-}
-
-/** A credential-redaction setting that reaches no file body moved (the
- *  prompt-and-logs switch), possibly in ANOTHER browser tab or by a policy
- *  refresh: this document re-reads the settings so no open Settings card keeps
- *  showing the old position. Nothing is purged. Owner sockets only receive it. */
-export function handleCredentialRedactionSettingsChanged(queryClient: QueryClient, d: FrameData | undefined): void {
-  if (d && typeof (d as { enabled?: unknown }).enabled === 'boolean') {
-    queryClient.setQueryData(['credential-redaction'], d)
-  }
-  queryClient.invalidateQueries({ queryKey: ['credential-redaction'] })
 }
 
 /** Live artifact refresh: the backend broadcasts from the artifact mutation

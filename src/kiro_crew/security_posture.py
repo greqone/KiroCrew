@@ -64,7 +64,7 @@ from kiro_crew import _facade_mirror
 # catches an omission.
 NON_EGRESS_REDACTION_MODULES: frozenset[str] = frozenset(
     {
-        # The output-seams switch's table and scope: it applies no redactor and
+        # The output seams' table and scope: it applies no redactor and
         # emits nothing; the call-site scan matches the seam names its prose
         # lists (`redact(x)`, `redact_log_via_context`).
         "redaction_seams.py",

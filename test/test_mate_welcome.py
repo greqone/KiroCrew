@@ -13,6 +13,7 @@ kickoff, not a prompt, and fits a user who already has other crewmates.
 from __future__ import annotations
 
 import asyncio
+import os
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -21,6 +22,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 from chat_test_helpers import _make_state
 
+from conftest import requires_symlinks
 from kiro_crew.agent_files import ASSISTANT_MEMBER_NAME
 from kiro_crew.dashboard import mate_welcome as cg
 from kiro_crew.members import (
@@ -460,6 +462,21 @@ class TestGreetRoute:
             assert first.status == 200 and (await first.json()) == {"outcome": cg.STARTED}
             assert (await second.json()) == {"outcome": cg.ALREADY_GREETED}
         assert len(dispatched.slots) == 1
+
+    @requires_symlinks
+    @pytest.mark.asyncio
+    async def test_a_link_at_the_marker_answers_500_and_starts_nothing(self, tmp_path, dispatched):
+        state = _make_state(tmp_path)
+        _bind_thread(state, MATE_SLUG, ASSISTANT_MEMBER_NAME)
+        target = tmp_path / "elsewhere.txt"
+        target.write_text("untouched", encoding="utf-8")
+        os.symlink(target, cg.greeting_marker_path(MATE_SLUG))
+        async with TestClient(TestServer(_greet_app(state))) as client:
+            resp = await client.post(f"/api/members/{MATE_SLUG}/greet")
+            assert resp.status == 500
+            assert (await resp.json())["code"] == "member_greet_failed"
+        assert dispatched.slots == []
+        assert target.read_text(encoding="utf-8") == "untouched"
 
     @pytest.mark.asyncio
     async def test_route_greets_a_crewmate_its_create_owed_a_goal_welcome(

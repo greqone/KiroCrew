@@ -11663,6 +11663,21 @@
       "job_title": "{{name}} — {{time}} {{tz}}",
       "job_title_paused": "{{name}} (in pausa) — {{time}} {{tz}}",
       "job_name_paused": "{{name}} (in pausa)"
+    },
+    "grillCard": {
+      "decline": "No, grazie",
+      "label": "Proposta di discussione",
+      "minutes_many": "Circa {{count}} minuti",
+      "minutes_one": "Circa {{count}} minuto",
+      "minutes_other": "Circa {{count}} minuti",
+      "must": "Deve",
+      "not_sent": "Questa vista non ha una casella di chat a cui inviare.",
+      "question": "Domanda",
+      "sent": "Inviato.",
+      "skip": "Fuori discussione",
+      "staged": "Inserito nella casella di chat. Invialo da lì.",
+      "start": "Inizia",
+      "who": "Chi partecipa"
     }
   },
   "hooks": {

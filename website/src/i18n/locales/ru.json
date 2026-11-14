@@ -11918,6 +11918,22 @@
       "job_title": "{{name}} — {{time}} {{tz}}",
       "job_title_paused": "{{name}} (приостановлено) — {{time}} {{tz}}",
       "job_name_paused": "{{name}} (приостановлено)"
+    },
+    "grillCard": {
+      "decline": "Не нужно",
+      "label": "Предложение обсуждения",
+      "minutes_few": "Около {{count}} минут",
+      "minutes_many": "Около {{count}} минут",
+      "minutes_one": "Около {{count}} минуты",
+      "minutes_other": "Около {{count}} минуты",
+      "must": "Обязательно",
+      "not_sent": "Здесь нет поля чата для отправки.",
+      "question": "Вопрос",
+      "sent": "Отправлено.",
+      "skip": "Не обсуждаем",
+      "staged": "Добавлено в поле чата. Отправьте его оттуда.",
+      "start": "Начать",
+      "who": "Кто участвует"
     }
   },
   "hooks": {

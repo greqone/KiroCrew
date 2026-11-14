@@ -11408,6 +11408,20 @@
       "job_title": "{{name}} — {{time}} {{tz}}",
       "job_title_paused": "{{name}} (বিরতিতে) — {{time}} {{tz}}",
       "job_name_paused": "{{name}} (বিরতিতে)"
+    },
+    "grillCard": {
+      "decline": "থাক",
+      "label": "আলোচনার প্রস্তাব",
+      "minutes_one": "প্রায় {{count}} মিনিট",
+      "minutes_other": "প্রায় {{count}} মিনিট",
+      "must": "অবশ্যই",
+      "not_sent": "এই দৃশ্যে পাঠানোর মতো চ্যাট বক্স নেই।",
+      "question": "প্রশ্ন",
+      "sent": "পাঠানো হয়েছে।",
+      "skip": "আলোচনা নয়",
+      "staged": "চ্যাট বক্সে রাখা হয়েছে। সেখান থেকে পাঠান।",
+      "start": "শুরু করুন",
+      "who": "কারা কথা বলবে"
     }
   },
   "hooks": {

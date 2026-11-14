@@ -33,6 +33,8 @@ import { useSmoothStream } from '../../hooks/useSmoothStream'
 import { usePagerFocus } from '../../hooks/usePagerFocus'
 import type { PlanStepInput } from '../../api/client'
 import { extractSteeringAcks, parseOptions, stripPartialOptionMarker } from '../../app-sdk/protocol'
+import { parseGrill, stripPartialGrillMarker } from '../../app-sdk/protocol/grillMarker'
+import GrillCard from '../../components/chat/GrillCard'
 import { i18nT } from '../../i18n/t'
 import { ROUTING_PREFIX_RE } from '../../providers/modelRegistry'
 import { fmtCredits, fmtCurrency, fmtElapsed } from '../../i18n/format'
@@ -259,13 +261,18 @@ const AssistantMessage = memo(function AssistantMessage({ content, isStreaming, 
   // first, so nothing downstream (options, Copy, Quote, Speak) reads the
   // scratchpad as the answer.
   const { cleaned: thinkingCleaned, thinking: inlineThinking } = useMemo(() => extractInlineThinking(effectiveContent, { hidePartial: isStreaming }), [effectiveContent, isStreaming])
-  const { text: parsedText } = parseOptions(thinkingCleaned)
+  // A `[GRILL:]` discussion card leaves the prose before the options do, so
+  // nothing downstream (Copy, Quote, Speak) reads its JSON as the answer.
+  const { text: grillCleaned, grill } = useMemo(() => parseGrill(thinkingCleaned), [thinkingCleaned])
+  const { text: parsedText } = parseOptions(grillCleaned)
+  // The chat the card answers (its own pane's, in a split view).
+  const grillSlot = slotKey ?? redactionSlot
   // While the marker line is still arriving it has no closing `]`, so
   // OPTION_MARKER_RE can't match it yet and the raw `[OPTIONS: …` would type
   // itself out as prose before flipping to pills at turn end. Suppress the
   // growing tail — streaming only, so a finished message still renders an
   // unterminated marker (prose about the syntax, or a truncated turn) as written.
-  const text = isStreaming ? stripPartialOptionMarker(parsedText) : parsedText
+  const text = isStreaming ? stripPartialOptionMarker(stripPartialGrillMarker(parsedText)) : parsedText
   // Pull kiro-cli's [STEERING …] acknowledgments out of the prose; render them as
   // chips instead of raw markers. Feed the cleaned text (marker removed) to the
   // stream so the raw tag never renders.
@@ -738,6 +745,7 @@ const AssistantMessage = memo(function AssistantMessage({ content, isStreaming, 
       {body ?? <MessageErrorBoundary rawContent={smoothedText}>
         <MarkdownRenderer content={smoothedText} streaming={isStreaming} onFileOpen={onFileOpen} onFolderOpen={onFolderOpen} onArtifactOpen={onArtifactOpen} onSessionOpen={onSessionOpen} sessions={sessions} activeSession={activeSession} rawMode={rawMode} messageTs={messageTs} slotKey={slotKey} glow={isStreaming} smooth={smooth} linkPreviews={linkPreviews && !draining} textPreviews textPreviewsPaused={isStreaming || draining} collapseDiffs mdCardToggle runYourselfCards blockedLinks={effectiveBlockedLinks} redactions={effectiveRedactions} redactionCoach={showRedactionCoach} redactionSlot={redactionSlot} />
       </MessageErrorBoundary>}
+      {!body && !isStreaming && grill && <GrillCard key={`${grillSlot}:${messageTs}:${activeIdx}`} grill={grill} slotKey={grillSlot} />}
       {/* Render the steer ack the moment kiro-cli emits the [STEERING …] marker
           — including mid-stream — so the user sees the agent acknowledge the
           steer live, not only after the whole turn finishes.

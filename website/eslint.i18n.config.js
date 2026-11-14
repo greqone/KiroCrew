@@ -1656,6 +1656,16 @@ export default [
     },
   },
 
+  // GRILL CARD WIRE VALUES ONLY: the `[GRILL:]` marker opener and the exact
+  // replies the discussion card sends, matched by value by the conductor, so a
+  // translated one breaks the hand-off. See the module's own header.
+  {
+    files: ['src/app-sdk/protocol/grillWireValues.ts'],
+    rules: {
+      'i18next/no-literal-string': 'off',
+    },
+  },
+
   // HOOK EVENT NAMES ONLY: matched BY VALUE against the backend's event
   // allowlist, and rendered verbatim on the hook's own row, so a translated one is
   // rejected on save and disagrees with its row. Extracted so the page keeps its

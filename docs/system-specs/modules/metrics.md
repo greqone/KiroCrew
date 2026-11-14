@@ -1759,6 +1759,27 @@ views' sessions, and the dollar card remembers its own state under the same keys
 `:usd` suffix. The per-session
 table sits under a **Full table** disclosure that starts closed and remembers its state
 in `telemetry:spend-table-open`.
+**What a session delivered.** For the 50 costliest conversations in the window,
+`dashboard.handlers.usage_outcome` reads the conversation's own transcript (through
+`ConversationLog.read_messages_chained_full`, memoised by the file's mtime and reread at
+most once a minute while the file keeps changing) and attaches an
+`outcome` to each row that delivered something: `commits`, `lines_added`, `lines_removed`,
+`prs`, and for the owner `merged`, `unchecked` and `per_merged`. `outcome_scan` on the cost
+block says how many rows were read; a window that delivered nothing returns the block
+unchanged. A row's command is the `command` argument in its `meta.input`, or its title when
+there is none, since a long title can arrive cut short. A commit counts when a shell tool
+row ran `git commit` and its `meta.output` holds git's `[branch sha]` summary line (the line
+after it gives the changed lines). A `git commit -q` prints nothing on success, but a call
+that failed or was cancelled without output is stored with the same empty output, so a
+quiet commit counts, with no line figures, only when `&&` joins it to the next command and
+the output is only `git log --oneline` lines; an amend or any other output does not count.
+A pull request counts when a row ran `gh pr create` or `glab mr create` and its output holds
+the change's URL on its own line, parsed by `parse_source_url`, unless the output says the
+pull request already exists. Each is counted once by sha or URL, and only inside the
+window. `merged` is read from the chip-status cache (`get_cached_check_status`), never
+refreshed here, so a URL the cache has not seen is `unchecked` rather than open, and a caller
+that is not the dashboard owner gets no merge figures. `per_merged` is the session's spend
+divided by `merged`. The Spend table shows the five columns only once a row has an outcome.
 **Stamping boundary:** rows are stamped at the two write sites that can run
 app-owned work — the dashboard chat runner (the slot's `_app`) and the
 subagent completion path (`info.app`, an app-dispatched subagent's spend).

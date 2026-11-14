@@ -223,6 +223,8 @@ if TYPE_CHECKING:  # every owner-defined name in _EXPORTS, for type checkers and
         _FLAT_SUBSTITUTION_RE,
         _FUNCTION_BIND_CAP,
         _FUNCTION_DEF_RE,
+        _GATE_BRACKET_WORD_RE,
+        _GATE_WORD_SPLIT_RE,
         _HOSTNAME_SUBSTITUTION_HINTS,
         _HOSTNAME_VARIABLE_FORMS,
         _LINE_ASSIGNMENT_RE,
@@ -257,6 +259,7 @@ if TYPE_CHECKING:  # every owner-defined name in _EXPORTS, for type checkers and
     )
 if TYPE_CHECKING:  # names it serves from outside its owners, from their homes
     from kiro_crew.atomic_write import on_event_loop as _event_loop_running  # noqa: F401
+    from kiro_crew.security import argv_rules as _argv_rules  # noqa: F401
     from kiro_crew.security import shell_normalizer as _shell_normalizer  # noqa: F401
     from kiro_crew.security.denied_rules import (  # noqa: F401
         _GIT_PUBLISH_UNGATED,

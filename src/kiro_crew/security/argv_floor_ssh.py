@@ -25,6 +25,7 @@ import re
 # the reader module rather than bound here at import: the facade mirrors a patch
 # onto the owning module's namespace, so a name bound into THIS namespace would
 # keep resolving the unpatched object and the instrument would count nothing.
+from . import argv_rules as _argv_rules
 from . import shell_normalizer as _shell_normalizer
 from .argv_floor_hosts import _GLOB_CHARS, _host_is_self
 from .argv_floor_self import (
@@ -116,9 +117,27 @@ _HOSTNAME_VARIABLE_FORMS: tuple[str, ...] = ("$hostname", "${hostname}")
 _FLAT_SUBSTITUTION_RE = re.compile(r"\$\(([^()`$]*)\)|`([^`()$]*)`")
 
 
+_GATE_WORD_SPLIT_RE = re.compile(r"[\s;&|()`]+")
+#: The same words with a bracket class (``[s)]``) kept whole.
+_GATE_BRACKET_WORD_RE = re.compile(r"(?:\[[^\[\]\s]*\]|[^\s;&|()`])+")
+
+
 def _glob_can_name_ssh_verb(probe: str) -> bool:
-    """True when a glob word in *probe* can expand to an ssh-family program."""
-    for word in probe.split():
+    """True when a glob word in *probe* can expand to an ssh-family program.
+
+    Words end at blanks and at the characters that start a command (``;`` ``&``
+    ``|`` a parenthesis or a backtick), so a verb glued to a substitution opener
+    (``$(s?h``, ``x=$(s?h``) or a separator (``true;s?h``) is still a word.  Three
+    readings are joined, so each finer one only adds words: the blank-separated
+    words, the words cut at those characters, and the same cut with a bracket
+    class kept whole (``s[s\\)]h``, alone or glued to an opener).
+    """
+    words = {
+        *probe.split(),
+        *_GATE_WORD_SPLIT_RE.split(probe),
+        *_GATE_BRACKET_WORD_RE.findall(probe),
+    }
+    for word in words:
         if not _GLOB_CHARS.intersection(word):
             continue
         base = word.rsplit("/", 1)[-1]
@@ -1071,6 +1090,7 @@ def _is_ssh_to_self(text_lower: str) -> bool:
     bound_program_verbs: "dict[str, str]" = {}
     for tokens in _self_token_frames(text_lower):
         programs = _argv_programs(tokens)
+        executed = _argv_rules._executed_program_indices(tokens)
         # A leading ``RSYNC_RSH=<cmd>`` environment assignment selects rsync's
         # remote shell exactly like ``-e``/``--rsh``, but rides BEFORE the verb
         # so the operand walk below never sees it.  When rsync runs live, that
@@ -1107,19 +1127,35 @@ def _is_ssh_to_self(text_lower: str) -> bool:
         disqualified: "bool | None" = None
         for i, token in enumerate(tokens):
             verb = _ssh_family_verb(token)
-            # A verb read through a bare glob (``s?h``, a lone ``*``) expands only
-            # in the working directory, so it already spends the one filesystem
-            # expansion this floor models and a glob operand after it is not read
-            # as this host.  Two wildcard words in a row are every five-field cron
+            # A glob that bash does not run and that ends its command (``git add
+            # *; curl localhost:3000``) is that command's last operand, not an
+            # ssh verb whose operand scan would run on past the ``;``.
+            if (
+                verb is not None
+                and _ssh_verb_basename(token) != verb
+                and i not in executed
+                and token.endswith((";", "|"))
+            ):
+                verb = None
+            # A bare glob (``s?h``) that bash RUNS -- program
+            # position, or the program a wrapper runs (``env s?h``) -- is an ssh
+            # verb whose glob operands (``local*``) keep host glob matching.  The
+            # same glob as another program's operand (``tar … s* *.*``,
+            # ``find s* l*``) is a filename: it already spends the one filesystem
+            # expansion this floor models, so a glob after it is not read as this
+            # host.  Two wildcard words in a row are every five-field cron
             # schedule (``0 * * * *``), and a working directory that expands both
             # into a self connection also makes a lone ``*`` that whole command
             # line, which no static floor reads.  A verb glob with a directory part
             # (``/usr/bin/s?h``) expands outside it, so its operands keep glob
-            # host matching.
+            # host matching.  A word of only ``*`` keeps the filename reading
+            # wherever it sits: it is the field of a cron schedule
+            # (``* * * * * root …``) far more often than a program.
             glob_verb = (
                 verb is not None
                 and _ssh_verb_basename(token) != verb
                 and not any(sep in token for sep in "/\\")
+                and (i not in executed or not token.strip("*"))
             )
             if verb is None and bound_program_verbs:
                 stripped_prog = token.strip("\"'")

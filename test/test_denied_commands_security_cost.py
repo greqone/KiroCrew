@@ -1652,3 +1652,77 @@ class TestS3DirectionSubstitutionIsCapped:
         produced = self._spy(monkeypatch, self._cap(line))
         assert s3_direction._reads_all_downloads(line) is True
         assert produced[0] > 0
+
+
+class TestSshGateBracketWordsAreLinear:
+    """The ssh floor's verb gate reads a command's words with ``_GATE_BRACKET_WORD_RE``,
+    which keeps a bracket class (``s[s)]h``) inside one word.
+
+    Its bracket alternative opens at a ``[`` and runs a class to the closing ``]``.
+    If that class can match another ``[``, an attempt opened at the first ``[`` of a
+    long run with no ``]`` scans to the end of the run, fails, and the next ``[``
+    opens another attempt over the same text: one rescan per opener, quadratic in
+    the run's length (``echo `` plus 40 KiB of ``[`` kept the gate busy for ~38 s).
+    A class that stops at the next opener lets each character be scanned by at most
+    one attempt.  Asserted on the parsed pattern, never by timing.
+    """
+
+    @staticmethod
+    def _class_matches(items, ch: str) -> bool:
+        from re import _constants
+
+        negate = items and str(items[0][0]).lower() == "negate"
+        hit = False
+        for op, value in items[1:] if negate else items:
+            kind = str(op).lower()
+            if kind == "literal":
+                hit = hit or chr(value) == ch
+            elif kind == "range":
+                hit = hit or value[0] <= ord(ch) <= value[1]
+            elif kind == "category" and value == _constants.CATEGORY_SPACE:
+                hit = hit or ch.isspace()
+            else:
+                raise AssertionError(f"class item this test cannot read: {op} {value}")
+        return hit != bool(negate)
+
+    def _opener_bodies(self):
+        """Each (opener, repeated class) pair of a branch alternative in the pattern."""
+        from re import _parser
+
+        from kiro_crew.security import argv_floor_ssh
+
+        found = []
+
+        def walk(items) -> None:
+            for op, value in items:
+                kind = str(op).lower()
+                if kind == "branch":
+                    for alt in value[1]:
+                        alt = list(alt)
+                        if (
+                            len(alt) >= 2
+                            and str(alt[0][0]).lower() == "literal"
+                            and str(alt[1][0]).lower() == "max_repeat"
+                            and str(alt[1][1][2][0][0]).lower() == "in"
+                        ):
+                            found.append((chr(alt[0][1]), list(alt[1][1][2][0][1])))
+                        walk(alt)
+                elif kind == "max_repeat":
+                    walk(value[2])
+                elif kind == "subpattern":
+                    walk(value[-1])
+
+        walk(_parser.parse(argv_floor_ssh._GATE_BRACKET_WORD_RE.pattern))
+        return found
+
+    def test_a_bracket_body_stops_at_the_next_opener(self):
+        bodies = self._opener_bodies()
+        assert [opener for opener, _ in bodies] == ["["], bodies
+        for opener, items in bodies:
+            assert not self._class_matches(items, opener), (opener, items)
+
+    @pytest.mark.parametrize("word", ["s[s)]h", "s[sx]h", "[rs]s*", "s[s]h"])
+    def test_a_bracket_class_stays_one_word(self, word):
+        from kiro_crew.security import argv_floor_ssh
+
+        assert argv_floor_ssh._GATE_BRACKET_WORD_RE.findall(word) == [word]

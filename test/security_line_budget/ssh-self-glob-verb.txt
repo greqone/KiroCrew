@@ -1,0 +1,5 @@
++86
+The ssh-to-self floor reads which glob words bash runs as a program
+(argv_rules._executed_program_indices, with _program_index split out of
+_program_args) so a glob verb such as s?h keeps its self-host check, and its
+verb gate cuts words at ; & | parentheses and backticks.

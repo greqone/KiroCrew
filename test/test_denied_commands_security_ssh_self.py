@@ -740,10 +740,21 @@ class TestSandboxEscapeSshSelf:
             "0 9 * * 1-5",
             "*/15 * * * *",
             "it runs on the cron schedule 0 * * * * (top of every hour).",
-            # The residual this costs: a bare glob verb and its glob host both
-            # expand in a working directory the caller filled, which already
-            # makes a lone ``*`` the whole connection.
-            "s?h local*",
+            # A bare glob verb that is another program's operand is a filename,
+            # so the glob after it is one too.
+            "tar -czf out.tgz s* *.*",
+            "git add s* README.md",
+            "find s* l*",
+            # A glob operand glued to the ``;`` that ends its command.
+            "git add *; curl -s localhost:3000/healthz",
+            # A ``case`` arm pattern sits where a program would, but is not run.
+            'case "$f" in *.md) ;; s*) wc -l *.* ;; esac',
+            # The program of a ``$(`` substitution glued to an assignment is
+            # the word after ``$(`` (``ls``), so the globs after it are its operands.
+            "files=$(ls s* l*)",
+            "hashes=$(sha256sum s* *.*)",
+            "n=$(ls s* *.* | wc -l)",
+            "count=$(ls r* *.* 2>/dev/null | wc -l)",
             "git add * *.* -f",
             "tar -czf site.tgz * *.* -p",
             "zip -r bundle.zip * *.* -j",
@@ -754,6 +765,55 @@ class TestSandboxEscapeSshSelf:
         # One filesystem expansion per connection: two wildcard words in a row
         # are every five-field cron schedule, not ``ssh localhost``.
         assert _denied_by(text) is None, text
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            # Known over-blocks, refused on purpose: the execute-position read
+            # takes the first glob for the program in a backtick assignment, an
+            # array literal, a ``|``-split ``case`` arm and ``sudo -e``.  Each
+            # names no host, so the agent can spell the files out instead.
+            "n=`ls s* *.* | wc -l`",
+            'files=( s* *.* ); printf "%s\\n" "${files[@]}"',
+            'targets=( r* l* ); tar -czf handoff.tgz "${targets[@]}"',
+            "bash -c 'files=( s* *.* ); tar -czf handoff.tgz \"${files[@]}\"'",
+            'case "$f" in s* | r* ) wc -l *.* ;; esac',
+            'for f in *; do case "$f" in docs ) ls docs ;; s* | r* ) wc -l *.* ;; esac; done',
+            "cd /etc/ssh && sudo -e s* *.*",
+        ],
+    )
+    def test_a_glob_read_as_a_run_verb_is_a_known_over_block(self, cmd):
+        assert _denied_by(cmd) == self._RULE, cmd
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            # In a directory holding files named ``ssh`` and ``localhost`` (an
+            # agent can create both), bash expands each of these into an ssh
+            # connection to this host: the glob verb is RUN, in program position
+            # or as the program a wrapper runs.
+            "s?h -F /dev/null local* id",
+            "s?h local*",
+            "s?h local* id",
+            "s[s]h local* id",
+            "env s?h local*",
+            "sudo s?h local*",
+            "time s?h local*",
+            "xargs s?h local*",
+            # A glob verb glued to a substitution opener, a subshell or a
+            # separator is still the program bash runs.
+            "echo $(s?h local* id)",
+            "x=$(s?h local* id)",
+            "(s?h local* id)",
+            "cd /tmp;s?h local*",
+            "echo $(s?h localhost id)",
+            # A substitution that closes inside the assignment word leaves the
+            # next word the program of the command.
+            "x=$(true) s?h local* id",
+        ],
+    )
+    def test_a_run_glob_verb_keeps_its_glob_host(self, cmd):
+        assert _denied_by(cmd) == self._RULE, cmd
 
     @pytest.mark.parametrize(
         "cmd",

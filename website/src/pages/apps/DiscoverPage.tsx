@@ -29,6 +29,7 @@ import CategoryRail from '../../components/appstore/CategoryRail'
 import AppListRow from '../../components/appstore/AppListRow'
 import TrustAppModal, { isTrustDeniedError } from '../../components/appstore/TrustAppModal'
 import SourcesPopover from '../../components/appstore/SourcesPopover'
+import { MarketStoreSections } from '../../components/appstore/MarketListingRows'
 import { categoryCounts, categoryFor, categoryLabel, type Category } from '../../components/appstore/categories'
 import { sourceKey, sourceRowKey, type RegistryApp } from '../../components/appstore/types'
 import { api } from '../../api/client'
@@ -660,6 +661,9 @@ function DiscoverPageBody() {
               </div>
             )}
 
+            {/* Kiro Space stores: their own blocks, keyed by store and ref. A git
+                source filter hides them, as it hides the editorial layer. */}
+            {source === null && <MarketStoreSections query={query} />}
             <div className="flex items-baseline justify-between mt-2 mb-3">
               <h3 className="text-[17px] font-semibold text-text-strong">
                 {category === 'all' ? i18nT('pages.appsPage.all_apps') : categoryLabel(category)}

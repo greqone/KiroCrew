@@ -228,6 +228,12 @@ def _send_id_of(user_meta: dict | None) -> str:
     return (normalize_send_id(user_meta.get("sendId")) or "") if user_meta else ""
 
 
+def _message_required() -> web.Response:
+    return web.json_response(
+        {"error": "message is required", "code": "message_required"}, status=400
+    )
+
+
 def _committed_if_accepted(request: web.Request, resp: Any, user_meta: dict | None) -> Any:
     """Record the claimed send when *resp* accepted it; a refusal gives the claim back."""
     from kiro_crew.shared_crew import send_race
@@ -659,6 +665,9 @@ async def _api_chat_send(request: web.Request) -> web.StreamResponse:
         if denied is not None:
             return denied
     created_in_send = slot_name is None or _normalize_slot_key(slot_name) not in state._slots
+    if created_in_send and not message:
+        # Refused before the mint, so an empty send leaves no new chat behind.
+        return _message_required()
     # A History delete in flight on this key (a row delete, an untouched session's
     # discard) unlinks the transcript a slot minted now would write; refuse
     # retryably, as resume does.
@@ -955,8 +964,9 @@ async def _api_chat_send(request: web.Request) -> web.StreamResponse:
             )
         else:
             logger.debug("agent match for slot=%s agent=%s", slot.key, agent)
-    elif _send_binds_agent(agent, slot):
-        # Slot has no agent — set it if not running
+    elif message and _send_binds_agent(agent, slot):
+        # Slot has no agent — set it if not running. An empty send binds nothing:
+        # it is refused just below.
         if slot.running:
             _emit_agent_assignment(slot.key, agent, outcome="denied_running")
             return web.json_response(
@@ -986,9 +996,7 @@ async def _api_chat_send(request: web.Request) -> web.StreamResponse:
         # bypassable, and that is exactly how a false `queued: true` receipt
         # happens. `message_required` is the backend-owned code already used
         # for this refusal (handlers/messaging.py).
-        return web.json_response(
-            {"error": "message is required", "code": "message_required"}, status=400
-        )
+        return _message_required()
 
     # The person typing into a Crew Mode worker steers it: the same length limit as
     # the side panel's steer route, refused before anything is queued or shown, and

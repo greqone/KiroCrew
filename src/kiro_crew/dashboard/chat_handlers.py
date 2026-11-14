@@ -129,6 +129,7 @@ from kiro_crew.dashboard.chat_api.chat_send import (  # noqa: F401
     _api_chat_send,
     _committed_if_accepted,
     _composer_locked_answer,
+    _message_required,
     _send_binds_agent,
     _send_harness_command,
     _send_id_of,

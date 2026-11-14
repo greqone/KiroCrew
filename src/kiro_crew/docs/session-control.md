@@ -1273,6 +1273,13 @@ Settings > Chat > Sessions > Sessions per creator, and the change applies to
 the next create with no restart. An agent can only propose the change on a
 card that you apply.
 
+A Bot also has its own limit: how many of its workers may be open at once
+(`max_workers` on its record, 8 by default, 1 to 32). Its owner sets it on the
+Bot's settings page under **Workers at once**; no Bot tool can change it. A
+`session_create` from the Bot's chat past it is refused with
+`bot_worker_cap_reached` (HTTP 409), and nothing is created: close a worker
+that has finished (`session_close`) or wait for one to finish.
+
 ## Combining two chats
 
 There is no Combine button. Two chats are combined by one of them, the

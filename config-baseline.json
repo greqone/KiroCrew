@@ -12538,6 +12538,20 @@
       "defaultValue": ""
     },
     {
+      "path": "agents.*.max_workers",
+      "kind": "core",
+      "type": "integer",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "label": "Workers at once",
+      "help": "How many worker sessions this Bot may have open at once. A session_create past it is refused with bot_worker_cap_reached until one of its workers is closed. Set by the owner on the Bot's settings page; the Bot cannot change it. 1 to 32.",
+      "hasChildren": false,
+      "enumValues": null,
+      "defaultValue": 8
+    },
+    {
       "path": "agents.*.acp_backend",
       "kind": "core",
       "type": "string",

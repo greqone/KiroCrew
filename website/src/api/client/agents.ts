@@ -97,6 +97,9 @@ export interface MemberRosterRow {
   worker_model?: string
   /** Same for the reasoning effort; '' = the crewmate's own level. */
   worker_reasoning_effort?: string
+  /** How many worker sessions this Bot may have open at once (1-32, default 8).
+   *  Only the owner sets it; `session_create` refuses past it. */
+  max_workers?: number
   /** The per-crewmate Dynamic capabilities preview (default off). */
   dynamic_capabilities?: boolean
   /** Optional presentation label shown in place of `name`. `name` stays the

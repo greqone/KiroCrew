@@ -74,6 +74,7 @@ from kiro_crew.dashboard.state import (
     MAX_LIVE_SLOTS,
     SlotOrigin,
     _safe_folder_tree,
+    bot_worker_cap_refusal,
     creator_slot_cap_refusal,
 )
 from kiro_crew.effort import EFFORT_LEVELS, is_valid_effort
@@ -1194,6 +1195,17 @@ async def create_session(
     # everyone's 500.
     if (cap_reason := creator_slot_cap_refusal(state, caller_key)) is not None:
         raise SessionControlError(cap_reason, code="creator_slot_cap_reached", status=409)
+    # Then the Bot's own limit: how many workers its owner lets it keep open at
+    # once (`max_workers`, set on the Bot's settings page, never by the Bot). The
+    # per-creator cap above is a gateway-wide share; this is the owner's plan.
+    if own_worker and crew:
+        member_id = getattr(caller_execution, "member_id", None) or ""
+        record = cfg.agents.get(crew)
+        cap = record.max_workers if record is not None else None
+        if cap is not None and (
+            worker_reason := bot_worker_cap_refusal(state, member_id, cap)
+        ) is not None:
+            raise SessionControlError(worker_reason, code="bot_worker_cap_reached", status=409)
     # The dry run ends HERE, after the last refusal and before the first write.
     # Any new refusal gate belongs above this line, or the preview would pass a
     # create the real call then refuses, and the MCP path walk would leave the

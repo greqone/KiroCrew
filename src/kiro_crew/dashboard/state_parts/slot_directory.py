@@ -142,6 +142,32 @@ def creator_slot_cap_refusal(state: "DashboardState", creator_key: str) -> str |
     )
 
 
+def bot_worker_cap_refusal(state: "DashboardState", member_id: str, cap: int) -> str | None:
+    """Why Bot *member_id* may not open another worker session, or ``None`` when it may.
+
+    *cap* is the Bot's ``max_workers``, which only its owner sets. Counted over
+    the live slots that are this Bot's own workers, from every chat the Bot runs
+    in, so a second thread does not get a second share.
+
+    shortcut: a worker restored at gateway start counts once it has run a turn
+    (``mate_worker.note_worker_session``); count from the execution records if a
+    restart ever lets a Bot past its cap.
+    """
+    from kiro_crew.members import crewmate_worker_member_id
+
+    if not member_id:
+        return None
+    held = sum(1 for key in list(state._slots) if crewmate_worker_member_id(key) == member_id)
+    if held < cap:
+        return None
+    return (
+        f"this Bot already has {held} worker sessions open and its owner allows {cap} "
+        "at once. Close a worker that has finished (session_close), or wait for one to "
+        "finish, then try again. Only the owner can change this limit, on the Bot's "
+        "settings page."
+    )
+
+
 def _is_genuine_slack_link(thread_ts: str | None, channel_id: str | None) -> bool:
     """True only for a complete Slack link, never another channel's legacy id."""
     namespaced = split_namespaced_channel_id(channel_id)

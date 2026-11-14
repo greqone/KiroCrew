@@ -265,6 +265,7 @@ from kiro_crew.dashboard.state_parts.slot_directory import (  # noqa: E402,F401 
     _mint_slot_key,
     _normalize_slot_key,
     _slot_index_from_key,
+    bot_worker_cap_refusal,
     creator_slot_cap_refusal,
     max_slots_per_creator,
     native_subagent_output_tail,

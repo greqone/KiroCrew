@@ -100,6 +100,12 @@ _DIAGRAM_HEADING = "**Diagram**"
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 _BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+#: Markdown ``*x*`` is italic; WhatsApp reads ``*x*`` as BOLD, so it must become
+#: ``_x_``. Not touching another ``*`` (bold, bullets) or a space inside the marks.
+_ITALIC_STAR_RE = re.compile(r"(?<![\w*])\*(?![\s*])([^*\n]+?)(?<!\s)\*(?![\w*])")
+#: ``***x***`` (bold italic) -> ``*_x_*``; read before the bold pass, which would
+#: otherwise leave ``*`` litter round a bold ``*x*``.
+_BOLD_ITALIC_RE = re.compile(r"\*\*\*([^*\n]+?)\*\*\*")
 _BOLD_US_RE = re.compile(r"__(.+?)__")
 _STRIKE_RE = re.compile(r"~~(.+?)~~")
 #: A balanced pair may sit inside the url (``.../Python_(programming_language)``);
@@ -107,7 +113,7 @@ _STRIKE_RE = re.compile(r"~~(.+?)~~")
 #: display-safety screen's: no ``[``, ``]`` or line break.
 _LINK_DESTINATION_CHAR_CLASS = r"[^()\s]"
 _LINK_RE = re.compile(
-    rf"\[([^\[\]\n]+)\]\((https?://{md_link_destination(_LINK_DESTINATION_CHAR_CLASS)}+)\)"
+    rf"!?\[([^\[\]\n]+)\]\((https?://{md_link_destination(_LINK_DESTINATION_CHAR_CLASS)}+)\)"
 )
 _BULLET_RE = re.compile(r"^(\s*)[-*+]\s+")
 #: A single-backtick inline-code span, matching the Telegram renderer's shape.
@@ -189,12 +195,17 @@ def _convert_line(line: str) -> str:
     if heading:
         # WhatsApp has no headings; bold the text instead. Bold cannot nest, so
         # bold marks already inside the heading are dropped first: wrapping
-        # ``**Summary**`` again left literal asterisks around the word.
+        # ``**Summary**`` again left literal asterisks around the word. The wrap
+        # comes last, after the passes below, so the italic pass never reads it.
         inner = heading.group(2).strip()
         inner = _sub_outside_code(_BOLD_RE, lambda m: m.group(1), inner)
         inner = _sub_outside_code(_BOLD_US_RE, lambda m: m.group(1), inner)
-        line = f"*{inner}*"
-    line = _BULLET_RE.sub(lambda m: f"{m.group(1)}• ", line)
+        line = inner
+    else:
+        line = _BULLET_RE.sub(lambda m: f"{m.group(1)}• ", line)
+    # Italic first: the bold passes below emit ``*x*``, which it must not see.
+    line = _sub_outside_code(_ITALIC_STAR_RE, lambda m: f"_{m.group(1)}_", line)
+    line = _sub_outside_code(_BOLD_ITALIC_RE, lambda m: f"*_{m.group(1)}_*", line)
     line = _sub_outside_code(_BOLD_RE, lambda m: f"*{m.group(1)}*", line)
     line = _sub_outside_code(_BOLD_US_RE, lambda m: f"*{m.group(1)}*", line)
     line = _sub_outside_code(_STRIKE_RE, lambda m: f"~{m.group(1)}~", line)
@@ -204,7 +215,7 @@ def _convert_line(line: str) -> str:
         lambda m: m.group(2) if m.group(1) == m.group(2) else f"{m.group(1)} ({m.group(2)})",
         line,
     )
-    return line
+    return f"*{line}*" if heading else line
 
 
 def to_whatsapp_text(content: str) -> str:

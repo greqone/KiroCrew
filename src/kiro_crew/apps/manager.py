@@ -337,6 +337,7 @@ if TYPE_CHECKING:  # names it serves from outside the family, from their homes
         shipped_builtin_app_root,
     )
     from kiro_crew.apps.frame_sources import (  # noqa: F401
+        frame_sources_grant_row,
         refresh_frame_sources,
     )
     from kiro_crew.apps.host_exec_grants import (  # noqa: F401

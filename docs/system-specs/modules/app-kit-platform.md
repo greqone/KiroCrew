@@ -5017,15 +5017,25 @@ Because the page module runs in the dashboard document, an iframe it draws is
 allowed or refused by the dashboard's own `frame-src`. An app names the sites it
 frames in `ui.frameSources`: at most 8 exact `https://<hostname>` origins, refused at
 install otherwise (`UIConfig.frame_source_errors`, host rules from
-`apps/app_hosts.py`). The gateway appends the union of the declared origins of every
-app that is installed, enabled and trusted to execute (`third_party_ceiling_closed`)
-to `frame-src`. `apps/frame_sources.py` scans on enable, disable, update and
+`apps/app_hosts.py`). Each origin is an entry of the `frameSources` family in the
+app's approved-grants set, staged like a link-preview host (`point_grants`,
+`staged_app_grants`): an install approves what it declares, and an origin that an
+update or a later edit of the app's own `app.json` adds is held back, listed on the
+app's page, until the owner approves it. The family is explicit-only, so a set stored
+before this host knew the key approves no origin. The gateway appends the union of the
+declared and approved origins of every app that is installed, enabled and trusted to
+execute (`third_party_ceiling_closed`) to `frame-src`. CSP is per document, so an
+origin is admitted for the whole dashboard while its app qualifies, not only on that
+app's page: any dashboard page, another app's page module, or a `srcdoc` frame that
+inherits the policy may frame it. `apps/frame_sources.py` scans on enable, disable, update and
 uninstall, and on every hook-reconciler tick, whose first scan runs as soon as the
 reconciler task starts, after boot (a CLI change or a trust edit in `config.json`
 lands there), and re-validates each manifest as it scans. Until that first scan the
 CSP admits no app origin. The CSP middleware reads
 only the published string, never a manifest. A disabled, untrusted or uninstalled app
-adds nothing, and an origin two apps declare stays while either one qualifies. A
+adds nothing, and an origin two apps declare stays while either one qualifies.
+Revoking trust in `config.json` drops the origin on the next reconciler tick (up to
+15 s), and an already open dashboard keeps admitting it until it reloads. A
 document keeps the policy it was served with, so `AppHost` listens for a
 `securitypolicyviolation` that refuses one of the mounted app's declared origins
 under a document policy that lacks it (a refusal by a policy that lists the origin is

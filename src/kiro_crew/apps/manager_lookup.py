@@ -22,6 +22,7 @@ from typing import Any, Callable
 from kiro_crew.apps.composer_action_grants import composer_action_grant_row
 from kiro_crew.apps.desktop_capabilities import desktop_capabilities_grant_row
 from kiro_crew.apps.execution import shipped_builtin_app_root
+from kiro_crew.apps.frame_sources import frame_sources_grant_row
 from kiro_crew.apps.link_open_grants import link_open_grant_row
 from kiro_crew.apps.link_preview_grants import link_preview_grant_row
 from kiro_crew.apps.manager_builtins import detect_orphaned_builtins
@@ -498,6 +499,7 @@ def list_apps() -> list[dict[str, Any]]:
             **worker_auto_approve_grant_row(entry.name, manifest_data),
             **user_session_reach_grant_row(entry.name, manifest_data),
             **desktop_capabilities_grant_row(entry.name, manifest_data),
+            **frame_sources_grant_row(entry.name, manifest_data),
             "manifest": manifest_data,
         }
         # Include migratedTo if non-empty
@@ -543,6 +545,7 @@ def get_app(name: str) -> dict[str, Any] | None:
         **worker_auto_approve_grant_row(name, manifest_data),
         **user_session_reach_grant_row(name, manifest_data),
         **desktop_capabilities_grant_row(name, manifest_data),
+        **frame_sources_grant_row(name, manifest_data),
         "manifest": manifest_data,
     }
     adoption_markers = _adoption_rows_context()

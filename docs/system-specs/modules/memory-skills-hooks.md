@@ -4359,7 +4359,8 @@ freezes to `builtin`. Child work asks with its parent's key and inherits it.
 stay on their provider.
 
 **No silent fallback.** A provider whose app is disabled or missing, whose backend the
-health watch does not report healthy, that sends memory off the machine without the owner's consent, that cannot isolate a
+health watch does not report healthy, that policy denies (`capabilities.memory_provider`),
+that sends memory off the machine without the owner's consent, that cannot isolate a
 Bot's store (`multi_store: false` for a store other than `default`), or that is asked
 for in a Shared Crew, gives a route with `unavailable` set. Prompts then carry
 `[Memory unavailable] <name> did not answer (...)`, recall carries a notice, and

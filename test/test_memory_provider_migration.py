@@ -328,6 +328,44 @@ def _app(served, path, *, method="POST", body=None, match_info=None, query=None)
     return request
 
 
+@pytest.mark.asyncio
+async def test_an_app_may_plan_a_move_but_never_run_resume_or_roll_back(served, monkeypatch):
+    from kiro_crew.dashboard.handlers import memory_provider as base
+    from kiro_crew.dashboard.handlers import memory_provider_migrations as routes
+
+    monkeypatch.setattr(base, "_app_holds_memory_admin", lambda app: True)
+    monkeypatch.setattr(base, "_audit", lambda *a, **k: None)
+    move = {"from": "builtin", "to": FIXTURE_ID}
+    refused = await routes.api_memory_provider_migrations(
+        _app(served, "/api/memory/provider/migrations", body=move)
+    )
+    assert refused.status == 403 and json.loads(refused.text)["code"] == "owner_only"
+    planned = await routes.api_memory_provider_migrations(
+        _app(served, "/api/memory/provider/migrations", body={**move, "dry_run": True})
+    )
+    assert planned.status == 202 and json.loads(planned.text)["dry_run"] is True
+    job_id = json.loads(planned.text)["id"]
+    for handler, suffix in (
+        (routes.api_memory_provider_migration_resume, "resume"),
+        (routes.api_memory_provider_migration_rollback, "rollback"),
+    ):
+        with pytest.raises(base.web.HTTPForbidden):
+            await handler(
+                _app(
+                    served,
+                    f"/api/memory/provider/migrations/{job_id}/{suffix}",
+                    match_info={"id": job_id},
+                )
+            )
+    imported = await routes.api_memory_provider_import(
+        _app(served, "/api/memory/provider/import", body={})
+    )
+    assert imported.status == 403
+
+
+# ── The harness memory pin ───────────────────────────────────────────────────
+
+
 def test_the_harness_memory_pin_is_sent_only_in_replace_mode() -> None:
     from memory_provider_helpers import set_provider
 
@@ -433,6 +471,30 @@ def test_a_failed_undo_is_offered_again_as_an_undo() -> None:
     assert asyncio.run(migration.rollback(failed, target, TARGET)).state == "rolled_back"
 
 
+@pytest.mark.asyncio
+async def test_an_app_cannot_reach_another_apps_provider(served, monkeypatch):
+    from kiro_crew.dashboard.handlers import memory_provider as base
+    from kiro_crew.dashboard.handlers import memory_provider_migrations as routes
+
+    monkeypatch.setattr(base, "_app_holds_memory_admin", lambda app: True)
+    monkeypatch.setattr(base, "_audit", lambda *a, **k: None)
+    # The fixture's providers belong to app "memory-fixture"; this caller is another app.
+    move = {"from": FIXTURE_ID, "to": "builtin", "dry_run": True}
+    request = _app(served, "/api/memory/provider/migrations", body=move)
+    request["app"] = "other-app"
+    refused = await routes.api_memory_provider_migrations(request)
+    assert refused.status == 403 and json.loads(refused.text)["code"] == "foreign_provider"
+    listing = _app(
+        served, "/api/memory/provider/items", method="GET", query={"provider": FIXTURE_ID}
+    )
+    listing["app"] = "other-app"
+    answer = await base.api_memory_provider_items(listing)
+    assert answer.status == 403
+    # Its own provider, Crew's memory and the active provider stay reachable.
+    assert base.app_may_name("app:memory-fixture", "", FIXTURE_ID)
+    assert base.app_may_name("app:other-app", "", "builtin")
+
+
 def test_a_lost_reply_after_a_dedup_never_puts_existing_memory_on_the_rollback_list() -> None:
     target = _Flaky()
     target.items["old"] = MemoryItem(id="old", kind="fact", text="Two.")
@@ -484,6 +546,37 @@ def test_an_item_over_the_cap_is_refused_by_name_never_shortened() -> None:
         (json.dumps({"format": migration.EXPORT_FORMAT}) + "\n" + line).encode()
     )
     assert items == [] and "longer than 8000" in errors[0]
+
+
+@pytest.mark.asyncio
+async def test_an_app_sees_only_the_moves_it_started(served, monkeypatch):
+    from kiro_crew.dashboard.handlers import memory_provider as base
+    from kiro_crew.dashboard.handlers import memory_provider_migrations as routes
+
+    monkeypatch.setattr(base, "_app_holds_memory_admin", lambda app: True)
+    monkeypatch.setattr(base, "_audit", lambda *a, **k: None)
+    owners = migration.new_job(
+        source=FIXTURE_ID,
+        target="builtin",
+        store="",
+        kinds=None,
+        include_retired=False,
+        preserve_timestamps=True,
+        dry_run=True,
+        caller="owner",
+    )
+    listing = _app(served, "/api/memory/provider/migrations", method="GET")
+    listing["app"] = "other-app"
+    body = json.loads((await routes.api_memory_provider_migrations(listing)).text)
+    assert owners.id not in {j["id"] for j in body["migrations"]}
+    one = _app(
+        served,
+        f"/api/memory/provider/migrations/{owners.id}",
+        method="GET",
+        match_info={"id": owners.id},
+    )
+    one["app"] = "other-app"
+    assert (await routes.api_memory_provider_migration(one)).status == 404
 
 
 def test_a_paused_page_is_counted_once_after_the_resume() -> None:

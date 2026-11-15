@@ -1,8 +1,8 @@
 """Who may use ``/api/memory/provider``, and what a switch requires.
 
-The owner may do everything; an app token is refused every route; an agent's
-internal secret opens nothing here (the read-only conformance kit aside). A switch
-refuses a provider that
+The owner may do everything; an app reaches the routes only with
+``permissions.memoryAdmin`` and never switches; an agent's internal secret opens
+nothing here (the read-only conformance kit aside). A switch refuses a provider that
 cannot do what the mode needs. While a provider replaces Crew's memory, Crew's own
 memory refuses every editor write with 409.
 """
@@ -48,14 +48,25 @@ def _owner(served, path, *, method="GET", body=None, query=None):
 
 
 @pytest.mark.asyncio
-async def test_an_app_token_is_refused(served) -> None:
+async def test_an_app_without_memory_admin_is_refused(served, monkeypatch) -> None:
+    monkeypatch.setattr(handlers, "_app_holds_memory_admin", lambda app: False)
     with pytest.raises(handlers.web.HTTPForbidden):
         await handlers.api_memory_provider_get(_app_request(served, "/api/memory/provider"))
     assert served.audits[-1]["args"][2] == "denied"
 
 
 @pytest.mark.asyncio
-async def test_no_app_and_no_agent_can_switch(served) -> None:
+async def test_an_app_with_memory_admin_reads_and_is_audited(served, monkeypatch) -> None:
+    monkeypatch.setattr(handlers, "_app_holds_memory_admin", lambda app: True)
+    response = await handlers.api_memory_provider_get(_app_request(served, "/api/memory/provider"))
+    body = json.loads(response.text)
+    assert {p["id"] for p in body["providers"]} == {FIXTURE_ID, READONLY_ID}
+    assert served.audits[-1]["args"][:3] == ("app:memory-fixture", "get", "allowed")
+
+
+@pytest.mark.asyncio
+async def test_no_app_and_no_agent_can_switch(served, monkeypatch) -> None:
+    monkeypatch.setattr(handlers, "_app_holds_memory_admin", lambda app: True)
     body = {"mode": "replace", "id": FIXTURE_ID}
     with pytest.raises(handlers.web.HTTPForbidden):
         await handlers.api_memory_provider_put(
@@ -175,6 +186,36 @@ async def test_the_owner_browses_and_edits_the_active_provider(served) -> None:
         )
     )
     assert json.loads(deleted.text)["outcome"] == "deleted"
+
+
+def test_memory_admin_admits_the_provider_routes_only(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from kiro_crew.apps import host_exec_grants, manager
+    from kiro_crew.dashboard import token_auth_app_scope as scope
+
+    manifest = SimpleNamespace(permissions=SimpleNamespace(api=[], memoryAdmin=True))
+    monkeypatch.setattr(host_exec_grants, "host_exec_granted", lambda app: True)
+    monkeypatch.setattr(manager, "get_app_manifest", lambda app: manifest)
+    monkeypatch.setattr(manager, "staged_app_grants", lambda app, family, read: read())
+    scope._app_perms_cache.clear()
+    allow = scope._app_api_allowlist("memory-fixture")
+    assert allow == ("/api/memory/provider",)
+    assert scope._api_pattern_matches(allow[0], "/api/memory/provider/items")
+    assert not scope._api_pattern_matches(allow[0], "/api/memory/semantic")
+    scope._app_perms_cache.clear()
+
+
+def test_install_approval_carries_the_memory_admin_entry() -> None:
+    from kiro_crew.apps.manager_records import _declared_grant_entries
+    from kiro_crew.apps.point_grants import grant_source
+
+    def api(permissions: dict) -> list[str]:
+        return _declared_grant_entries(grant_source({"permissions": permissions}))["api"]
+
+    assert api({"api": [], "memoryAdmin": True}) == ["/api/memory/provider"]
+    assert api({"api": [], "memoryAdmin": "true"}) == []
+    assert api({"api": ["/api/x"]}) == ["/api/x"]
 
 
 @pytest.mark.asyncio
@@ -337,8 +378,70 @@ async def test_an_item_deleted_and_added_again_is_stored_again(served) -> None:
     assert [i["text"] for i in served.items("default")] == ["Uses zsh."]
 
 
+def test_memory_admin_needs_its_own_approved_grant(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from kiro_crew.apps import manager
+
+    manifest = SimpleNamespace(permissions=SimpleNamespace(memoryAdmin=True))
+    monkeypatch.setattr(manager, "get_app_manifest", lambda app: manifest)
+    monkeypatch.setattr(manager, "is_app_enabled", lambda app: True)
+    # An approved parent such as /api/memory does not stand in for the exact grant.
+    monkeypatch.setattr(manager, "staged_app_grants", lambda app, family, declared: [])
+    assert not handlers._app_holds_memory_admin("memory-fixture")
+    monkeypatch.setattr(
+        manager, "staged_app_grants", lambda app, family, declared: list(declared())
+    )
+    assert handlers._app_holds_memory_admin("memory-fixture")
+
+
+# ── provider benchmarks ──────────────────────────────────────────────────────
+
+
 def _bench_body(**extra):
     return {"suite": "isolation", "providers": ["baseline:recency"], **extra}
+
+
+@pytest.mark.asyncio
+async def test_an_app_plans_a_benchmark_but_never_runs_one(served, monkeypatch) -> None:
+    from kiro_crew.dashboard.handlers import memory_provider_bench as bench
+
+    monkeypatch.setattr(handlers, "_app_holds_memory_admin", lambda app: True)
+    planned = await bench.api_bench_runs(
+        _app_request(served, "/api/memory/provider/bench/runs", method="POST", body=_bench_body())
+    )
+    body = json.loads(planned.text)
+    assert planned.status == 200 and body["state"] == "planned"
+    refused = await bench.api_bench_runs(
+        _app_request(
+            served,
+            "/api/memory/provider/bench/runs",
+            method="POST",
+            body=_bench_body(dry_run=False),
+        )
+    )
+    assert refused.status == 403 and json.loads(refused.text)["code"] == "owner_only"
+    for call, method in (
+        (bench.api_bench_run_resume, "POST"),
+        (bench.api_bench_run, "DELETE"),
+    ):
+        request = _app_request(
+            served, f"/api/memory/provider/bench/runs/{body['run_id']}", method=method
+        )
+        request.match_info.update({"id": body["run_id"]})
+        with pytest.raises(handlers.web.HTTPForbidden):
+            await call(request)
+    with pytest.raises(handlers.web.HTTPForbidden):
+        await bench.api_bench_evalsets(
+            _app_request(served, "/api/memory/provider/bench/evalsets", method="POST", body={})
+        )
+    # The app sees its own plan; another app sees nothing of it.
+    listed = await bench.api_bench_runs(_app_request(served, "/api/memory/provider/bench/runs"))
+    assert [r["id"] for r in json.loads(listed.text)["runs"]] == [body["run_id"]]
+    other = await bench.api_bench_runs(
+        _app_request(served, "/api/memory/provider/bench/runs", app="another-app")
+    )
+    assert json.loads(other.text)["runs"] == []
 
 
 @pytest.mark.asyncio

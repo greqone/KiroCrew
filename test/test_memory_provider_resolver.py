@@ -1,7 +1,8 @@
 """``route_for``: the one place a memory provider is chosen.
 
 With no provider configured the answer is the shared builtin route and nothing is
-read. A configured provider answers only when its app is enabled, the owner consented to its egress and it can hold the store; otherwise the route
+read. A configured provider answers only when its app is enabled, policy allows it,
+the owner consented to its egress and it can hold the store; otherwise the route
 says why, and Crew's own memory never stands in. A session is frozen to the choice
 it started with.
 """
@@ -90,9 +91,10 @@ def test_a_chat_created_before_the_switch_stays_on_crew_memory(fixture) -> None:
     "setup, reason",
     [
         (lambda mp, f: mp.setattr(resolver, "_shared_crew_on", lambda: True), "Shared Crew"),
+        (lambda mp, f: mp.setattr(resolver, "_governance_permits", lambda key: False), "policy"),
         (lambda mp, f: setattr(f.health, "port", None), "connect"),
     ],
-    ids=["shared_crew", "unhealthy"],
+    ids=["shared_crew", "policy", "unhealthy"],
 )
 def test_an_unavailable_provider_never_falls_back(monkeypatch, fixture, setup, reason) -> None:
     set_provider("replace", FIXTURE_ID)

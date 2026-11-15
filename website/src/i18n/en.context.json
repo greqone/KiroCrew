@@ -560,6 +560,7 @@
     "pages.membersPage.edit_member": "Accessible name and tooltip of a clickable crew face on the Bots page: opens that member's whole editor (name, template, model, workspace, triggers, avatar), NOT only the avatar builder. \"Edit\" as an imperative verb; \"member\" = a crew member (an agent), same noun as member_count.",
     "pages.overview.agentTemplatesTab.ref_crewmate": "Kind label in a template's list of what uses it, for a reference held by a Bot (the product's always-on agent); keep \"Bot\" untranslated.",
     "pages.overview.memoryTab.add": "Verb on a button: add an entry to the list beside it. If the target language needs an object, name the thing being added.",
+    "pages.overview.memoryBench.run": "Verb on the primary button of the memory provider benchmark sheet: start the planned benchmark run now.",
     "pages.overview.memoryFailuresCard.trend_new": "Badge in the Trend column of the Memory tab's Repeated failures table: this failure did not happen at all the week before. Adjective (newly appeared), not a button to create something.",
     "pages.overview.memoryFailuresCard.trend_growing": "Badge in the Trend column of the Memory tab's Repeated failures table: this failure happened more often this week than the week before. Adjective (increasing).",
     "pages.overview.memoryFailuresCard.trend_steady": "Badge in the Trend column of the Memory tab's Repeated failures table: this failure happened as often as, or less often than, the week before. Adjective (unchanged).",

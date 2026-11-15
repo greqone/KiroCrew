@@ -923,6 +923,7 @@ def test_editing_a_fact_with_a_finite_stored_value_still_proceeds(store):
     assert store.set_semantic("user.language", "Chinese", 1.0, "user_explicit") is None
     before = memory_edit.list_records(store, {"q": "language"}, limit=10)["entries"][0]
     after = memory_edit._after(store, before, {"type": "set", "value": "English"})
+    assert after is not None
     assert json.loads(after["value_json"]) == "English"
 
 
@@ -1118,3 +1119,52 @@ def test_an_unpaged_read_still_assembles_every_record(store, record_reads):
 
     assert len(rows) == RECORDS and all(row is not None for row in rows)
     assert reads == {"metadata": RECORDS, "fingerprint": RECORDS}
+
+
+def _bulk_edit(store, items, operation):
+    selection = {
+        "items": [{"kind": e["kind"], "id": e["id"], "revision": e["revision"]} for e in items]
+    }
+    preview = memory_edit.preview_edit(
+        store, "chosen", b"secret", {"selection": selection, "operation": operation}
+    )
+    return memory_edit.apply_edit(store, "chosen", b"secret", preview["preview_id"])
+
+
+def test_tier_filter_set_tier_forget_and_unforget_round_trip(store):
+    """The memory app's audit: filter by tier, re-tier, forget, then bring the row back."""
+    rule = {
+        "rule": "Run only the suspect test file first.",
+        "category": "tool",
+        "applies": "always",
+    }
+    assert store.set_semantic("lesson.aaaa0001", rule, 1.0, "user_explicit") is None
+    assert store.write_episodic("Measured the sandbox mask twice before the release.") is True
+
+    def ids(query):
+        return [e["id"] for e in memory_edit.list_records(store, query)["entries"]]
+
+    assert ids({"kind": "directive", "applies": "always"}) == ["lesson.aaaa0001"]
+    assert ids({"kind": "directive", "applies": "on_topic"}) == []
+    lesson = memory_edit.list_records(store, {"applies": "always"})["entries"]
+    assert (
+        _bulk_edit(store, lesson, {"type": "set_tier", "applies": "on_topic"})["changed_count"] == 1
+    )
+    assert ids({"applies": "on_topic"}) == ["lesson.aaaa0001"]
+
+    # Only an experience records a recall, so only it can be never-recalled.
+    assert [
+        e["kind"] for e in memory_edit.list_records(store, {"never_recalled": "1"})["entries"]
+    ] == ["episode"]
+
+    lesson = memory_edit.list_records(store, {"applies": "on_topic"})["entries"]
+    assert _bulk_edit(store, lesson, {"type": "forget"})["changed_count"] == 1
+    assert ids({"kind": "directive"}) == []
+    assert ids({"kind": "directive", "status": "forgotten"}) == ["lesson.aaaa0001"]
+    gone = memory_edit.refresh_records(
+        store, [{"kind": "directive", "id": "lesson.aaaa0001"}], status="forgotten"
+    )["entries"]
+    assert _bulk_edit(store, gone, {"type": "unforget"})["changed_count"] == 1
+    assert ids({"kind": "directive"}) == ["lesson.aaaa0001"]
+    with pytest.raises(memory_edit.MemoryEditError):
+        memory_edit.list_records(store, {"status": "draft"})

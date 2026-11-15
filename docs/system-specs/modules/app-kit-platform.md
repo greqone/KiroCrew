@@ -8859,7 +8859,7 @@ Writers: `webhook_sources.py`, `apps/webhook_source_sdk.py`, `apps/context.py`,
 `apps/builtins/ops_mission_control/tests/test_webhook_governance.py`,
 `website/src/test/TrustAppModalWebhookSource.test.tsx`.
 
-## 43. An app can serve Crew's memory (seam level 8)
+## 43. An app can serve Crew's memory, and can manage it with the owner's consent (seam level 8)
 
 An app declares memory providers in `contributes.memoryProviders`
 (`apps/manifest_memory_providers.py`, at most four): an `id`
@@ -8877,12 +8877,61 @@ the gateway, the CLI, the recall pool or the consolidation child for it; those r
 provider through the gateway's routes or not at all. The contract, the modes and every
 memory path are in memory-skills-hooks.md, "Memory providers".
 
-**Choosing a provider is the owner's.** Every `/api/memory/provider` route, the move
-and import routes and the benchmark routes answer the owner's own dashboard session
-only; an app token gets 403 `owner_only` and every internal-secret caller is refused
-(the read-only conformance checks are the one internal path). An app has no SDK verb
-and no manifest permission that reaches these routes; the owner switches with
-`PUT /api/memory/provider`, plans and runs a move, and plans and starts a benchmark.
+**Choosing a provider is the owner's.** `PUT /api/memory/provider` refuses every app
+token and every internal-secret caller; only the owner's own dashboard session switches.
+An app asks with the App SDK's `requestMemoryProviderChange(target)`, which opens the
+host-rendered `MemoryProviderSheet`; the owner's press performs the switch and the
+promise answers `switched`, `cancelled` or `unavailable` (no sheet host mounted).
+`requestMemoryMove({from, to})` opens the host-rendered `MemoryMoveSheet` the same way:
+the sheet plans the move (a dry run an app may also start itself), and only the owner's
+press runs it; the promise answers `moved`, `cancelled` or `unavailable`. Running,
+resuming and rolling back a move refuse every app token.
+`requestMemoryBench(request)` opens the host-rendered `MemoryBenchSheet`: the sheet
+plans a provider benchmark (a dry run an app may also start itself), shows each
+provider's egress, cleanup method and the reader and judge call budget, asks the owner
+to tick an acknowledgement before a copy of their own memory leaves the machine, and
+only the owner's press starts the run; the promise answers
+`{outcome: 'started', runId}`, `cancelled` or `unavailable`. Starting, resuming and
+cancelling a run and building an own-memory eval set refuse every app token. All three
+verbs share App Kit level 8.
+
+**`permissions.memoryAdmin`.** Grants an app token the `/api/memory/provider` routes
+(browse, search, edit, delete, plan a move, export, plan an import) and nothing else: it joins the
+app's API allowlist as the one prefix `/api/memory/provider` (`token_auth_app_scope`),
+staged like any API entry so an update that adds it waits for the owner, and the
+handlers check the flag again and write an audit record naming the app for every call.
+The existing store-scoped memory routes stay closed to app tokens, and the advisory
+`permissions.memory` field is unchanged.
+
+**The memory app host facade.** `/api/memory/provider/host/<rest>` is the one door from
+`memoryAdmin` to Crew's owner memory routes (`dashboard/handlers/memory_app_host.py`).
+It sits under the `/api/memory/provider` prefix the grant already opens, so it needs no
+new manifest permission. It answers the owner, or an app the provider routes' own
+`_caller` admits (manifest `memoryAdmin`, app enabled, audited as `host`), and anyone
+else gets 403 `memory_admin_required`. It dispatches to `/api/<rest>` only when that
+method and route canonical are in `HOST_ROUTES`: the records list, refresh and history,
+bulk preview and apply, the review queues, the context stack and preview, the store
+list, preferences and projects, the member rules, goals and SOUL documents, steering
+files and a chat's steering switch. Nothing that changes config, members, apps or
+sessions is listed; any other path, `..` included, is a 404. For an app it sets the
+request-state key `MEMORY_ADMIN_GRANT` = `app:<name>` on the inner request, which
+`require_owner_dashboard_request` and the member routes' `_deny_app_caller` admit and
+audit (`resources=memory_admin_grant`). Request state is server side, so no header or
+cookie can carry the grant, and a direct call to an owner route stays refused. The
+app's own page calls as the owner's session, so this door matters for an app token
+(its backend, or a surface that holds one).
+
+The facade's own routes: `GET /api/memory/context-stack?store=&chat=` builds the
+session-start prompt for the store with the context builder, splits it into blocks in
+send order (`context_blocks.block_spans`, then the member section openers), and gives
+each its size, owner, cap group (the V2 essentials envelope, `ESSENTIAL_MAX_CHARS`),
+whether the newest session-start turn's trace sent it, and the steering files the
+harness loads itself (counted only when the prompt does not already quote them).
+`GET /api/memory/review?queue=conflicts|dreams|replaced` lists pending conflict
+proposals, Dreaming proposals and episodes a fact update retired;
+`POST /api/memory/review/{id}` accepts or rejects one through the same preview/apply
+path the editor uses. `GET|PUT /api/members/{slug}/soul` reads and writes a member's
+`SOUL.md` (16,000 chars).
 
 **Consent for egress.** A provider that states `egress: "remote"` answers only after the
 owner agreed at the switch; the grant is in the keystone `memory_provider_consent.json`

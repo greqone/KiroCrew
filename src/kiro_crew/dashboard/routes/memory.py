@@ -133,6 +133,14 @@ def register(app: web.Application) -> None:
     )
     app.router.add_get("/api/memory/provider", handlers.api_memory_provider_get)
     app.router.add_put("/api/memory/provider", handlers.api_memory_provider_put)
+    # Memory manager app host routes (handlers/memory_app_host.py). The facade is the
+    # one way a ``memoryAdmin`` app reaches the owner routes it lists.
+    app.router.add_route("*", "/api/memory/provider/host/{tail:.+}", handlers.api_memory_app_host)
+    app.router.add_get("/api/memory/context-stack", handlers.api_memory_context_stack)
+    app.router.add_get("/api/memory/review", handlers.api_memory_review)
+    app.router.add_post("/api/memory/review/{id}", handlers.api_memory_review_resolve)
+    app.router.add_get("/api/members/{slug}/soul", handlers.api_member_soul)
+    app.router.add_put("/api/members/{slug}/soul", handlers.api_member_soul)
 
     # Crons, lessons, spawn, taskrunner, send-message, notifications
     # are registered via _register_mcp_routes() above.

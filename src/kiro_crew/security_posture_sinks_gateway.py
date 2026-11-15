@@ -320,6 +320,44 @@ _GATEWAY_SINKS: tuple[tuple[str, str, str], ...] = (
         "through the shared credential + exfiltration-URL chain before serialization.",
     ),
     (
+        "Memory provider item responses",
+        "dashboard/handlers/memory_provider.py",
+        "Item text an app's memory provider returns, served to the owner by the "
+        "provider browse routes. Each item's text passes "
+        "through the shared credential + exfiltration-URL chain before "
+        "serialization.",
+    ),
+    (
+        "Memory provider move and export responses",
+        "dashboard/handlers/memory_provider_migrations.py",
+        "Move plans (with their sampled item text) and the JSONL export of an app's "
+        "memory provider or Crew's own memory, served to the owner. Each job and "
+        "each export record passes through the shared credential + exfiltration-URL "
+        "chain before serialization.",
+    ),
+    (
+        "Memory provider benchmark responses",
+        "dashboard/handlers/memory_provider_bench.py",
+        "Benchmark plans, run states, reports and own-memory probe text, served to "
+        "the owner. Every body passes "
+        "through the shared credential + exfiltration-URL chain before serialization.",
+    ),
+    (
+        "Own-memory eval set",
+        "eval/bench/own_memory.py",
+        "A copy of the owner's memory taken for a benchmark. An item that either "
+        "redactor would change is dropped before anything is written, so no partly "
+        "masked secret reaches the eval set or a provider.",
+    ),
+    (
+        "Memory provider lesson responses",
+        "memory_provider/lesson_routes.py",
+        "Lesson rules, categories and supersession results a memory provider "
+        "returns, served by the lesson routes while a provider replaces Crew "
+        "memory. Each field passes through the shared credential + "
+        "exfiltration-URL chain before serialization.",
+    ),
+    (
         "Bedrock Knowledge Base retrieval queries",
         "knowledge/connectors/bedrock_kb.py",
         "The user's knowledge-search query text as sent to the AWS Bedrock "

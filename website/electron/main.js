@@ -72,6 +72,7 @@ const {
   shutdownCrewCompanion,
   suspendCrewCompanion,
   resumeCrewCompanion,
+  seedHostDisplayMemory: seedCrewCompanionDisplay,
 } = require("./crew-companion/index");
 const { hostsDashboard, openDashboardSession } = require("./dashboard-session");
 // A session opened from outside the dashboard (a Crew Companion notification, an
@@ -933,6 +934,14 @@ app.whenReady().then(async () => {
   } catch (error) {
     glog("crew-companion: init failed — " + (error && error.message));
   }
+  const appWindowDisplays = path.join(app.getPath("userData"), "app-window-displays.json");
+  try {
+    // Before the host reads it: the built-in avatar's display carries over to the
+    // app's own copy once that copy is installed.
+    seedCrewCompanionDisplay(app.getPath("userData"), appWindowDisplays);
+  } catch (error) {
+    glog("crew-companion: display hand-off failed: " + (error && error.message));
+  }
   try {
     appWindowHost = createAppWindowHost({
       electron,
@@ -941,7 +950,7 @@ app.whenReady().then(async () => {
       cookieHeader: sessionCookieHeader,
       preloadPath: path.join(__dirname, "app-window-preload.js"),
       log: glog,
-      displayMemoryPath: path.join(app.getPath("userData"), "app-window-displays.json"),
+      displayMemoryPath: appWindowDisplays,
       showDashboardSession: (slotKey) => openDashboardSession(
         windows.focusedDashboardWindow() || null, BACKEND_URL, slotKey, SURFACE_APP,
       ),
